@@ -26,6 +26,11 @@ class CalendarService {
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify([...events, event]));
   }
 
+  deleteEvent(eventId: string) {
+    const events = this.getEvents().filter(e => e.id !== eventId);
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(events));
+  }
+
   clearDaySessions(athleteId: string, dateStr: string) {
     let events = this.getEvents();
     events = events.filter(e => {

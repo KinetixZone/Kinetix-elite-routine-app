@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { User, Workout, Goal, UserLevel, CalendarEvent } from '../../types/kinetix';
+import { User, Workout, Goal, UserLevel, CalendarEvent, SessionFeedback } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
@@ -192,10 +192,17 @@ const AthleteCalendar: React.FC<{ athleteId: string; onDayClick: (dateStr: strin
              const hasWorkout = dEvents.length > 0;
              const isVenue = hasWorkout && dEvents[0].location === 'Kinetix Functional Zone';
              return (
-               <div key={idx} onClick={() => onDayClick(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, dEvents[0])} className={`relative aspect-square rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all ${hasWorkout ? isVenue ? 'bg-red-900/50 border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.3)]' : 'bg-white/10 border-white/20' : 'bg-white/5 border-transparent'}`}>
-                  <span className="text-xs font-bold">{day}</span>
-                  {hasWorkout && (
-                     <div className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+               <div key={idx} onClick={() => onDayClick(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, dEvents[0])} className={`relative aspect-square rounded-xl border p-1 flex flex-col items-center justify-between cursor-pointer transition-all ${hasWorkout ? isVenue ? 'bg-red-950/80 border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.3)] hover:bg-red-900/80' : 'bg-white/10 border-white/20 hover:bg-white/15' : 'bg-white/5 border-transparent hover:bg-white/10'}`}>
+                  <span className="text-xs font-bold self-start pl-1">{day}</span>
+                  {hasWorkout ? (
+                     <div className="w-full flex flex-col items-center pb-1">
+                        <p className="text-[7px] leading-tight font-black uppercase text-red-500 text-center truncate max-w-full px-0.5" title={dEvents[0].title}>
+                           {dEvents[0].title}
+                        </p>
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse mt-1" />
+                     </div>
+                  ) : (
+                     <div className="h-4" />
                   )}
                </div>
              );
@@ -247,9 +254,44 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'expiring' | 'suspended'>('all');
-  const [tab, setTab] = useState<'profile' | 'calendar'>('profile'); 
+  const [tab, setTab] = useState<'profile' | 'calendar' | 'history'>('profile'); 
   const [editingInstance, setEditingInstance] = useState<Workout | null>(null);
+  const [clickedEvent, setClickedEvent] = useState<CalendarEvent | null>(null);
   const [calendarTrigger, setCalendarTrigger] = useState(0); 
+  
+  const completedSessions = useMemo(() => {
+    if (!selectedAthlete) return [];
+    const logs = storageService.getAllLogs().filter(log => log.athleteId === selectedAthlete.id);
+    const sessionsMap: { [key: string]: { 
+        date: string; 
+        workoutName: string; 
+        workoutId: string; 
+        feedback?: SessionFeedback; 
+        logs: typeof logs 
+    } } = {};
+
+    logs.forEach(log => {
+        const dateKey = log.timestamp.split('T')[0];
+        const workoutKey = log.workoutId || 'legacy';
+        const groupKey = `${dateKey}-${workoutKey}`;
+
+        if (!sessionsMap[groupKey]) {
+            sessionsMap[groupKey] = {
+                date: dateKey,
+                workoutName: log.workoutName || 'Entrenamiento Kinetix',
+                workoutId: log.workoutId || 'legacy',
+                feedback: log.feedback,
+                logs: []
+            };
+        }
+        sessionsMap[groupKey].logs.push(log);
+        if (log.feedback && !sessionsMap[groupKey].feedback) {
+            sessionsMap[groupKey].feedback = log.feedback;
+        }
+    });
+
+    return Object.values(sessionsMap).sort((a, b) => b.date.localeCompare(a.date));
+  }, [selectedAthlete, calendarTrigger]);
   const [showScheduler, setShowScheduler] = useState(false);
   const [templates, setTemplates] = useState<Workout[]>([]);
   const [showFormModal, setShowFormModal] = useState(false);
@@ -331,6 +373,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
            <div className="flex gap-6 mb-6">
               <button onClick={() => setTab('profile')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 ${tab === 'profile' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Ficha & Control</button>
               <button onClick={() => setTab('calendar')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 ${tab === 'calendar' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Calendario / Edición</button>
+               <button onClick={() => setTab('history')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 ${tab === 'history' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Historial & RPE 📊</button>
            </div>
 
            <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -349,15 +392,112 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
               )}
               {tab === 'calendar' && <AthleteCalendar athleteId={selectedAthlete.id} onDayClick={(dateStr, event) => {
                   if (event) {
-                      const workout = storageService.getWorkoutById(event.workoutTemplateId!);
-                      if (workout) {
-                          setEditingInstance({ ...workout, id: `inst-${Date.now()}`, isTemplate: false, scheduledDate: dateStr, assignedTo: selectedAthlete.id, location: event.location });
-                      }
+                      setClickedEvent(event);
+                      const workout = storageService.getWorkoutById(event.workoutTemplateId!) || {
+                          id: event.workoutTemplateId || `inst-${selectedAthlete.id}-${Date.now()}`,
+                          name: event.title || 'Entrenamiento Kinetix',
+                          day: 1,
+                          exercises: [],
+                          isTemplate: false,
+                          scheduledDate: dateStr,
+                          assignedTo: selectedAthlete.id,
+                          location: event.location
+                      };
+                      setEditingInstance(workout);
                   } else {
+                      setClickedEvent(null);
                       setAssigningDate(dateStr);
                       setSelectedTemplateIdToAssign('');
                   }
               }} eventsTrigger={calendarTrigger} onOpenScheduler={() => setShowScheduler(true)} />}
+              
+              {tab === 'history' && (
+                 <div className="space-y-6">
+                    <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                        <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] italic">Bitácora de Rendimiento</p>
+                        <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">{completedSessions.length} Sesiones Registradas</span>
+                    </div>
+
+                    <div className="space-y-4">
+                        {completedSessions.map((session, idx) => {
+                            const rpe = session.feedback?.rpe || 0;
+                            const fatigue = session.feedback?.fatigue || 0;
+                            const notes = session.feedback?.notes;
+                            
+                            let rpeColor = 'text-green-500 bg-green-500/10 border-green-500/20';
+                            if (rpe >= 8) rpeColor = 'text-red-500 bg-red-500/10 border-red-500/20';
+                            else if (rpe >= 6) rpeColor = 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
+
+                            let fatigueColor = 'text-green-400 bg-green-400/5';
+                            if (fatigue >= 4) fatigueColor = 'text-red-400 bg-red-400/5';
+                            else if (fatigue >= 3) fatigueColor = 'text-yellow-400 bg-yellow-400/5';
+
+                            return (
+                                <div key={idx} className="bg-black/40 border border-white/5 rounded-3xl p-6 space-y-4 hover:border-white/10 transition-all">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h4 className="text-sm font-black uppercase italic tracking-wide text-white">{session.workoutName}</h4>
+                                            <p className="text-[8px] font-mono uppercase text-white/40 mt-1">{session.date} // {session.logs[0]?.executionMode || 'Remoto'}</p>
+                                        </div>
+                                        {rpe > 0 && (
+                                            <div className={`px-3 py-1 rounded-full border text-[8px] font-black tracking-widest uppercase ${rpeColor}`}>
+                                                RPE: @{rpe}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {(rpe > 0 || fatigue > 0 || notes) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5 text-xs">
+                                            {fatigue > 0 && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[8px] font-black uppercase text-white/30">Fatiga Post-Op:</span>
+                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${fatigueColor}`}>{fatigue} / 5</span>
+                                                </div>
+                                            )}
+                                            {notes && (
+                                                <div className="col-span-2 space-y-1">
+                                                    <span className="text-[8px] font-black uppercase text-white/30 block">Notas del Atleta:</span>
+                                                    <p className="text-[10px] text-white/70 italic font-medium">"{notes}"</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Ejecución del Entrenamiento:</p>
+                                        <div className="grid grid-cols-1 gap-2 pl-2 border-l border-white/5">
+                                            {Array.from(new Set(session.logs.map(l => l.exerciseId))).map(exId => {
+                                                const exName = storageService.getExercises().find(ex => ex.id === exId)?.name || exId;
+                                                const exerciseLogs = session.logs.filter(l => l.exerciseId === exId).sort((a, b) => a.setIndex - b.setIndex);
+                                                return (
+                                                    <div key={exId} className="text-xs">
+                                                        <span className="font-black text-white/80 uppercase italic text-[10px] block mb-1">↳ {exName}</span>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {exerciseLogs.map((l, sIdx) => (
+                                                                <div key={sIdx} className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/5 text-[9px] font-mono text-white/50">
+                                                                    S{sIdx+1}: <span className="font-bold text-white">{l.weight}kg</span> × <span className="font-bold text-white">{l.reps}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {completedSessions.length === 0 && (
+                            <div className="py-12 bg-white/[0.01] rounded-[32px] border border-dashed border-white/5 flex flex-col items-center justify-center text-center">
+                                <span className="text-2xl opacity-20">📊</span>
+                                <p className="text-[10px] font-black uppercase text-white/20 mt-3 tracking-widest">Aún no hay registros para este atleta</p>
+                                <p className="text-[8px] text-white/10 uppercase mt-1">El historial se llenará cuando complete entrenamientos en la app.</p>
+                            </div>
+                        )}
+                    </div>
+                 </div>
+              )}
            </div>
         </div>
       )}
@@ -380,17 +520,34 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                   <div className="flex gap-3">
                       <button onClick={() => {
                           if (confirm("¿Seguro que deseas eliminar esta rutina de este día?")) {
-                              calendarService.clearDaySessions(selectedAthlete!.id, editingInstance.scheduledDate!);
+                              if (clickedEvent) {
+                                  calendarService.deleteEvent(clickedEvent.id);
+                              } else {
+                                  calendarService.clearDaySessions(selectedAthlete!.id, editingInstance.scheduledDate!);
+                              }
                               setCalendarTrigger(prev => prev + 1);
                               setEditingInstance(null);
+                              setClickedEvent(null);
                           }
                       }} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-[9px] uppercase font-black transition-colors">Eliminar de este Día 🗑</button>
-                      <button onClick={() => setEditingInstance(null)} className="px-6 py-3 bg-white/5 rounded-xl text-[9px] uppercase font-black">Cerrar</button>
+                      <button onClick={() => { setEditingInstance(null); setClickedEvent(null); }} className="px-6 py-3 bg-white/5 rounded-xl text-[9px] uppercase font-black">Cerrar</button>
                       <button onClick={async () => {
                           await storageService.saveUserSpecificWorkout(editingInstance);
-                          calendarService.saveEvent({ id: `evt-${editingInstance.id}`, type: 'workout', title: editingInstance.name, start: `${editingInstance.scheduledDate}T12:00:00`, end: `${editingInstance.scheduledDate}T13:00:00`, allDay: true, coachId: 'jorge', athleteIds: [selectedAthlete!.id], workoutTemplateId: editingInstance.id, location: editingInstance.location });
+                          calendarService.saveEvent({ 
+                              id: clickedEvent ? clickedEvent.id : `evt-${editingInstance.id}`, 
+                              type: 'workout', 
+                              title: editingInstance.name, 
+                              start: `${editingInstance.scheduledDate}T12:00:00`, 
+                              end: `${editingInstance.scheduledDate}T13:00:00`, 
+                              allDay: true, 
+                              coachId: 'jorge', 
+                              athleteIds: [selectedAthlete!.id], 
+                              workoutTemplateId: editingInstance.id, 
+                              location: editingInstance.location 
+                          });
                           setCalendarTrigger(prev => prev + 1);
                           setEditingInstance(null);
+                          setClickedEvent(null);
                       }} className="px-6 py-3 bg-green-600 rounded-xl text-[9px] uppercase font-black shadow-lg">Guardar Cambios</button>
                   </div>
               </div>

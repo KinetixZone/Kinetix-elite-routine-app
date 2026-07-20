@@ -77,6 +77,9 @@ export interface WorkoutLog {
   isPR: boolean;
   executionMode?: 'Venue' | 'Remote' | 'Emergency_Home'; 
   feedback?: SessionFeedback;
+  athleteId?: string;
+  workoutId?: string;
+  workoutName?: string;
 }
 
 export interface BodyMetric {

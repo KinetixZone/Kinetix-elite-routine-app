@@ -5,6 +5,25 @@ import { soundService } from '../../services/soundService';
 import { storageService } from '../../services/storageService';
 import { aiService } from '../../services/aiService';
 
+export function getEmbedUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.includes('/embed/')) return url;
+  
+  const watchRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/;
+  const match = url.match(watchRegex);
+  if (match && match[1]) {
+    return `https://www.youtube.com/embed/${match[1]}`;
+  }
+  
+  const shortsRegex = /youtube\.com\/shorts\/([^&\s?]+)/;
+  const shortsMatch = url.match(shortsRegex);
+  if (shortsMatch && shortsMatch[1]) {
+    return `https://www.youtube.com/embed/${shortsMatch[1]}`;
+  }
+
+  return url;
+}
+
 interface Props {
   workout: Workout;
   onFinish: (data: ProgressState) => void;
@@ -240,7 +259,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
                                         <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
                                             <iframe 
                                                 className="absolute inset-0 w-full h-full" 
-                                                src={ex.videoUrl} 
+                                                src={getEmbedUrl(ex.videoUrl)} 
                                                 title={ex.name} 
                                                 frameBorder="0" 
                                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
@@ -257,7 +276,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
                                         <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
                                             <iframe 
                                                 className="absolute inset-0 w-full h-full" 
-                                                src={ex.pair.videoUrl} 
+                                                src={getEmbedUrl(ex.pair.videoUrl)} 
                                                 title={ex.pair.name} 
                                                 frameBorder="0" 
                                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
@@ -385,7 +404,13 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
 
                             <button 
                                 onClick={() => {
-                                    const updatedLogs = progress.workoutLogs.map(log => ({ ...log, feedback }));
+                                    const updatedLogs = progress.workoutLogs.map(log => ({ 
+                                        ...log, 
+                                        athleteId: user?.id,
+                                        workoutId: workout.id,
+                                        workoutName: workout.name,
+                                        feedback 
+                                    }));
                                     onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });
                                 }} 
                                 className="w-full py-6 bg-white text-black rounded-[24px] font-black uppercase tracking-[0.4em] text-[10px] shadow-xl hover:bg-red-600 hover:text-white transition-all"
