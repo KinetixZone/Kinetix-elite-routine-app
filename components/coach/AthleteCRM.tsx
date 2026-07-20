@@ -214,6 +214,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
   const [templates, setTemplates] = useState<Workout[]>([]);
   const [showFormModal, setShowFormModal] = useState(false);
   const [athleteToEdit, setAthleteToEdit] = useState<User | null>(null);
+  const [assigningDate, setAssigningDate] = useState<string | null>(null);
+  const [selectedTemplateIdToAssign, setSelectedTemplateIdToAssign] = useState<string>('');
 
   // Use an async wrapper inside useEffect to handle the async call to getTemplates
   useEffect(() => {
@@ -311,6 +313,9 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                       if (workout) {
                           setEditingInstance({ ...workout, id: `inst-${Date.now()}`, isTemplate: false, scheduledDate: dateStr, assignedTo: selectedAthlete.id, location: event.location });
                       }
+                  } else {
+                      setAssigningDate(dateStr);
+                      setSelectedTemplateIdToAssign('');
                   }
               }} eventsTrigger={calendarTrigger} onOpenScheduler={() => setShowScheduler(true)} />}
            </div>
@@ -333,9 +338,16 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
               <div className="flex justify-between items-center mb-6 shrink-0">
                   <h3 className="text-2xl font-black uppercase italic text-red-600">{editingInstance.name} <span className="text-white/20 text-xs not-italic">({editingInstance.scheduledDate})</span></h3>
                   <div className="flex gap-3">
-                      <button onClick={() => setEditingInstance(null)} className="px-6 py-3 bg-white/5 rounded-xl text-[9px] uppercase font-black">Cerrar</button>
                       <button onClick={() => {
-                          storageService.saveUserSpecificWorkout(editingInstance);
+                          if (confirm("¿Seguro que deseas eliminar esta rutina de este día?")) {
+                              calendarService.clearDaySessions(selectedAthlete!.id, editingInstance.scheduledDate!);
+                              setCalendarTrigger(prev => prev + 1);
+                              setEditingInstance(null);
+                          }
+                      }} className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-[9px] uppercase font-black transition-colors">Eliminar de este Día 🗑</button>
+                      <button onClick={() => setEditingInstance(null)} className="px-6 py-3 bg-white/5 rounded-xl text-[9px] uppercase font-black">Cerrar</button>
+                      <button onClick={async () => {
+                          await storageService.saveUserSpecificWorkout(editingInstance);
                           calendarService.saveEvent({ id: `evt-${editingInstance.id}`, type: 'workout', title: editingInstance.name, start: `${editingInstance.scheduledDate}T12:00:00`, end: `${editingInstance.scheduledDate}T13:00:00`, allDay: true, coachId: 'jorge', athleteIds: [selectedAthlete!.id], workoutTemplateId: editingInstance.id, location: editingInstance.location });
                           setCalendarTrigger(prev => prev + 1);
                           setEditingInstance(null);
@@ -358,7 +370,76 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
           </div>
       )}
       
-      {showScheduler && selectedAthlete && <VenueSchedulerModal athlete={selectedAthlete} onClose={() => setShowScheduler(false)} onApply={() => { setShowScheduler(false); setCalendarTrigger(prev => prev + 1); }} />}
+       {showScheduler && selectedAthlete && <VenueSchedulerModal athlete={selectedAthlete} onClose={() => setShowScheduler(false)} onApply={() => { setShowScheduler(false); setCalendarTrigger(prev => prev + 1); }} />}
+
+       {assigningDate && (
+          <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95">
+              <div className="bg-[#0F0F11] w-full max-w-md rounded-[40px] border border-white/10 p-8 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white mb-2">Asignar Rutina</h2>
+                  <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mb-6">
+                      DÍA: {assigningDate}
+                  </p>
+                  
+                  <div className="space-y-6">
+                      <div className="space-y-2">
+                          <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Plantilla Master</label>
+                          <select 
+                              className="w-full bg-black border border-white/10 rounded-2xl p-4 text-white font-bold outline-none focus:border-red-600 transition-colors"
+                              value={selectedTemplateIdToAssign}
+                              onChange={(e) => setSelectedTemplateIdToAssign(e.target.value)}
+                          >
+                              <option value="">-- SELECCIONAR PLANTILLA --</option>
+                              {templates.map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                              ))}
+                          </select>
+                      </div>
+
+                      <div className="flex gap-4 pt-4 border-t border-white/5">
+                          <button 
+                              onClick={() => setAssigningDate(null)} 
+                              className="flex-1 py-4 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest transition-colors"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                              onClick={async () => {
+                                  if (!selectedTemplateIdToAssign) return alert("Selecciona una plantilla");
+                                  const tpl = templates.find(t => t.id === selectedTemplateIdToAssign);
+                                  if (!tpl) return;
+                                  
+                                  const instance: Workout = JSON.parse(JSON.stringify(tpl));
+                                  const newId = `direct-${selectedAthlete!.id}-${Date.now()}`;
+                                  instance.id = newId;
+                                  instance.isTemplate = false;
+                                  instance.assignedTo = selectedAthlete!.id;
+                                  instance.scheduledDate = assigningDate;
+                                  
+                                  await storageService.saveUserSpecificWorkout(instance);
+                                  calendarService.saveEvent({ 
+                                      id: `evt-${newId}`, 
+                                      type: 'workout', 
+                                      title: instance.name, 
+                                      start: `${assigningDate}T12:00:00`, 
+                                      end: `${assigningDate}T13:00:00`, 
+                                      allDay: true, 
+                                      coachId: 'system', 
+                                      athleteIds: [selectedAthlete!.id], 
+                                      workoutTemplateId: newId 
+                                  });
+                                  
+                                  setCalendarTrigger(prev => prev + 1);
+                                  setAssigningDate(null);
+                              }} 
+                              className="flex-1 py-4 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest transition-all"
+                          >
+                              Asignar
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+       )}
     </div>
   );
 };

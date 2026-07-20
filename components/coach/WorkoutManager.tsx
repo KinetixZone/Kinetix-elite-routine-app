@@ -12,7 +12,7 @@ export const WorkoutManager: React.FC = () => {
   const [editingTemplate, setEditingTemplate] = useState<Workout | null>(null);
   const [assignTarget, setAssignTarget] = useState<Workout | null>(null);
   const [athletes, setAthletes] = useState<User[]>([]);
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
+  const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
   const [projConfig, setProjConfig] = useState({ 
     startDate: new Date().toISOString().split('T')[0], 
     weeks: 4, 
@@ -38,58 +38,68 @@ export const WorkoutManager: React.FC = () => {
   };
 
   const handleCreateMesocycle = async () => {
-      if (!assignTarget || !selectedAthleteId || projConfig.days.length === 0) return alert("Selecciona atleta, días y plantilla.");
+      if (!assignTarget || selectedAthleteIds.length === 0 || projConfig.days.length === 0) {
+          return alert("Selecciona al menos un atleta, días y plantilla.");
+      }
       
-      const mesocycleSessions = storageService.cloneWithProgression(
-          assignTarget, 
-          selectedAthleteId,
-          projConfig.weeks, 
-          projConfig.incWeight, 
-          projConfig.incReps
-      );
+      for (const athleteId of selectedAthleteIds) {
+          const mesocycleSessions = storageService.cloneWithProgression(
+              assignTarget, 
+              athleteId,
+              projConfig.weeks, 
+              projConfig.incWeight, 
+              projConfig.incReps
+          );
 
-      // Guardar cada sesión del meso en la nube
-      for (const session of mesocycleSessions) {
-          await storageService.saveTemplate(session);
+          // Guardar cada sesión del meso en la nube / local
+          for (const session of mesocycleSessions) {
+              await storageService.saveTemplate(session);
+          }
+
+          mesocycleSessions.forEach((session, weekIdx) => {
+              calendarService.projectMesocycle(
+                  session, 
+                  { id: athleteId } as any, 
+                  projConfig.days, 
+                  projConfig.startDate,
+                  1, 
+                  undefined,
+                  weekIdx * 7
+              );
+          });
       }
 
-      mesocycleSessions.forEach((session, weekIdx) => {
-          calendarService.projectMesocycle(
-              session, 
-              { id: selectedAthleteId } as any, 
-              projConfig.days, 
-              projConfig.startDate,
-              1, 
-              undefined,
-              weekIdx * 7
-          );
-      });
-
       await refreshData();
-      alert(`✅ Mesociclo de ${projConfig.weeks} semanas desplegado en la Nube.`);
+      alert(`✅ Mesociclo de ${projConfig.weeks} semanas desplegado para ${selectedAthleteIds.length} atleta(s).`);
       setView('list');
+      setSelectedAthleteIds([]);
   };
 
   const handleAssignDirect = async () => {
-      if (!assignTarget || !selectedAthleteId || projConfig.days.length === 0) return alert("Selecciona atleta y al menos un día.");
+      if (!assignTarget || selectedAthleteIds.length === 0 || projConfig.days.length === 0) {
+          return alert("Selecciona al menos un atleta y un día.");
+      }
       
-      const instance: Workout = JSON.parse(JSON.stringify(assignTarget));
-      instance.id = `direct-${selectedAthleteId}-${Date.now()}`;
-      instance.assignedTo = selectedAthleteId;
-      instance.isTemplate = false;
+      for (const athleteId of selectedAthleteIds) {
+          const instance: Workout = JSON.parse(JSON.stringify(assignTarget));
+          instance.id = `direct-${athleteId}-${Date.now()}`;
+          instance.assignedTo = athleteId;
+          instance.isTemplate = false;
+          
+          await storageService.saveTemplate(instance);
+          calendarService.projectMesocycle(
+              instance, 
+              { id: athleteId } as any, 
+              projConfig.days, 
+              projConfig.startDate, 
+              projConfig.weeks
+          );
+      }
       
-      await storageService.saveTemplate(instance);
-      calendarService.projectMesocycle(
-          instance, 
-          { id: selectedAthleteId } as any, 
-          projConfig.days, 
-          projConfig.startDate, 
-          projConfig.weeks
-      );
-      
-      alert("✅ Rutina sincronizada correctamente.");
+      alert(`✅ Rutina asignada y sincronizada para ${selectedAthleteIds.length} atleta(s).`);
       await refreshData();
       setView('list');
+      setSelectedAthleteIds([]);
   };
 
   const WEEK_DAYS = [
@@ -144,12 +154,52 @@ export const WorkoutManager: React.FC = () => {
          <div className="animate-in zoom-in-95 max-w-xl mx-auto bg-[#0F0F11] border border-white/10 p-12 rounded-[50px] shadow-2xl">
             <h2 className="text-3xl font-black uppercase italic mb-8 tracking-tighter">{view === 'meso' ? 'Meso Architect' : 'Deploy Protocol'}</h2>
             <div className="space-y-8">
-               <div className="space-y-2">
-                   <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Atleta Objetivo</label>
-                   <select className="w-full bg-black border border-white/10 rounded-2xl p-5 font-black text-white text-lg" value={selectedAthleteId} onChange={e => setSelectedAthleteId(e.target.value)}>
-                      <option value="">-- SELECCIONAR ATLETA --</option>
-                      {athletes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                   </select>
+               <div className="space-y-3">
+                   <div className="flex justify-between items-center">
+                       <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Atletas Objetivo</label>
+                       <div className="flex gap-2">
+                           <button 
+                               type="button"
+                               onClick={() => setSelectedAthleteIds(athletes.map(a => a.id))} 
+                               className="text-[9px] font-black text-red-500 uppercase tracking-wider bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 hover:bg-red-500 hover:text-white transition-all"
+                           >
+                               Todos
+                           </button>
+                           <button 
+                               type="button"
+                               onClick={() => setSelectedAthleteIds([])} 
+                               className="text-[9px] font-black text-white/40 uppercase tracking-wider bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:bg-white/10 transition-all"
+                           >
+                               Ninguno
+                           </button>
+                       </div>
+                   </div>
+                   <div className="bg-black border border-white/10 rounded-3xl p-4 max-h-48 overflow-y-auto custom-scrollbar space-y-2">
+                       {athletes.map(a => {
+                           const isSelected = selectedAthleteIds.includes(a.id);
+                           return (
+                               <div 
+                                   key={a.id} 
+                                   onClick={() => {
+                                       if (isSelected) {
+                                           setSelectedAthleteIds(selectedAthleteIds.filter(id => id !== a.id));
+                                       } else {
+                                           setSelectedAthleteIds([...selectedAthleteIds, a.id]);
+                                       }
+                                   }}
+                                   className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-red-600/10 border-red-600/40 text-white' : 'bg-white/[0.02] border-transparent hover:bg-white/5 text-white/60'}`}
+                               >
+                                   <span className="text-xs font-bold uppercase">{a.name}</span>
+                                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${isSelected ? 'bg-red-600 border-red-600' : 'border-white/20'}`}>
+                                       {isSelected && <span className="text-[10px] font-bold text-white">✓</span>}
+                                   </div>
+                               </div>
+                           );
+                       })}
+                       {athletes.length === 0 && (
+                           <p className="text-center text-[10px] font-black uppercase text-white/20 py-4">No hay atletas registrados</p>
+                       )}
+                   </div>
                </div>
                
                <div className="space-y-4">
