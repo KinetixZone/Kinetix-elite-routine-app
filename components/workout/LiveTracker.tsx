@@ -227,42 +227,87 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
                         </div>
 
                         {isExpanded && (
-                            <div className="p-4 border-t border-white/5 space-y-3 bg-black/20">
-                                {rows.map((row, rIdx) => {
-                                    const log = progress.workoutLogs.find(l => l.exerciseId === row.exerciseId && l.setIndex === row.globalIndex);
-                                    return (
-                                        <div key={rIdx} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${log ? 'bg-green-600/10 border-green-500/30' : 'bg-black border-white/5 hover:border-white/10'}`}>
-                                            <div className="w-16 text-center">
-                                                <p className="text-[7px] font-black text-white/30 uppercase leading-none">{row.label}</p>
-                                            </div>
-                                            <div className="flex-1 flex gap-2">
-                                                <div className="relative flex-1">
-                                                    <span className="absolute -top-3 left-0 text-[6px] text-white/20 uppercase font-black">KG</span>
-                                                    <input 
-                                                        type="number" 
-                                                        placeholder={ghost ? `${ghost.weight}` : row.targetWeight} 
-                                                        className={`w-full bg-transparent text-lg font-black outline-none border-b border-white/5 focus:border-red-600 transition-colors ${ghost ? 'placeholder-white/40' : 'placeholder-white/10'}`} 
-                                                        value={progress.performanceData[row.exerciseId]?.weights[row.globalIndex] || ''} 
-                                                        onChange={e => updateInput(row.exerciseId, row.globalIndex, 'weights', e.target.value)} 
-                                                    />
-                                                </div>
-                                                <div className="relative w-16">
-                                                    <span className="absolute -top-3 left-0 text-[6px] text-white/20 uppercase font-black">REPS</span>
-                                                    <input 
-                                                        type="number" 
-                                                        placeholder={ghost ? `${ghost.reps}` : row.targetReps} 
-                                                        className={`w-full bg-transparent text-lg font-black outline-none border-b border-white/5 text-center focus:border-red-600 transition-colors ${ghost ? 'placeholder-white/40' : 'placeholder-white/10'}`} 
-                                                        value={progress.performanceData[row.exerciseId]?.reps[row.globalIndex] || ''} 
-                                                        onChange={e => updateInput(row.exerciseId, row.globalIndex, 'reps', e.target.value)} 
-                                                    />
-                                                </div>
-                                            </div>
-                                            <button onClick={() => handleLog(row.exerciseId, row)} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${log ? 'bg-green-600 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-95' : 'bg-white/5 hover:bg-white/10 active:scale-90'}`}>
-                                                {log ? <span className="text-white font-black text-sm">✓</span> : <span className="text-[10px] font-black opacity-40">OK</span>}
-                                            </button>
+                            <div className="p-4 border-t border-white/5 space-y-4 bg-black/20">
+                                {ex.coachCue && (
+                                    <div className="bg-red-500/5 border border-red-500/20 px-4 py-3 rounded-2xl text-[10px] text-red-400 font-bold uppercase tracking-wider">
+                                        💡 Indicación: {ex.coachCue}
+                                    </div>
+                                )}
+
+                                {ex.videoUrl && (
+                                    <div className="space-y-2">
+                                        <p className="text-[9px] font-black text-white/40 uppercase tracking-widest">Video Demostrativo Técnico 🎥</p>
+                                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
+                                            <iframe 
+                                                className="absolute inset-0 w-full h-full" 
+                                                src={ex.videoUrl} 
+                                                title={ex.name} 
+                                                frameBorder="0" 
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                                allowFullScreen
+                                                referrerPolicy="no-referrer"
+                                            />
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                )}
+
+                                {ex.pair?.videoUrl && (
+                                    <div className="space-y-2 pt-2 border-t border-white/5">
+                                        <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Video Bravo (B): {ex.pair.name} 🎥</p>
+                                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
+                                            <iframe 
+                                                className="absolute inset-0 w-full h-full" 
+                                                src={ex.pair.videoUrl} 
+                                                title={ex.pair.name} 
+                                                frameBorder="0" 
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                                allowFullScreen
+                                                referrerPolicy="no-referrer"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3 pt-2">
+                                    {rows.map((row, rIdx) => {
+                                        const log = progress.workoutLogs.find(l => l.exerciseId === row.exerciseId && l.setIndex === row.globalIndex);
+                                        return (
+                                            <div key={rIdx} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${log ? 'bg-green-600/10 border-green-500/30' : 'bg-black border-white/5 hover:border-white/10'}`}>
+                                                <div className="w-16 text-center">
+                                                    <p className="text-[7px] font-black text-white/30 uppercase leading-none">{row.label}</p>
+                                                    {row.exerciseName && row.exerciseName !== ex.name && (
+                                                        <p className="text-[6px] font-bold text-white/50 uppercase mt-1 truncate">{row.exerciseName}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 flex gap-2">
+                                                    <div className="relative flex-1">
+                                                        <span className="absolute -top-3 left-0 text-[6px] text-white/20 uppercase font-black">KG</span>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder={ghost ? `${ghost.weight}` : row.targetWeight} 
+                                                            className={`w-full bg-transparent text-lg font-black outline-none border-b border-white/5 focus:border-red-600 transition-colors ${ghost ? 'placeholder-white/40' : 'placeholder-white/10'}`} 
+                                                            value={progress.performanceData[row.exerciseId]?.weights[row.globalIndex] || ''} 
+                                                            onChange={e => updateInput(row.exerciseId, row.globalIndex, 'weights', e.target.value)} 
+                                                        />
+                                                    </div>
+                                                    <div className="relative w-16">
+                                                        <span className="absolute -top-3 left-0 text-[6px] text-white/20 uppercase font-black">REPS</span>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder={ghost ? `${ghost.reps}` : row.targetReps} 
+                                                            className={`w-full bg-transparent text-lg font-black outline-none border-b border-white/5 text-center focus:border-red-600 transition-colors ${ghost ? 'placeholder-white/40' : 'placeholder-white/10'}`} 
+                                                            value={progress.performanceData[row.exerciseId]?.reps[row.globalIndex] || ''} 
+                                                            onChange={e => updateInput(row.exerciseId, row.globalIndex, 'reps', e.target.value)} 
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => handleLog(row.exerciseId, row)} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${log ? 'bg-green-600 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-95' : 'bg-white/5 hover:bg-white/10 active:scale-90'}`}>
+                                                    {log ? <span className="text-white font-black text-sm">✓</span> : <span className="text-[10px] font-black opacity-40">OK</span>}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
                     </div>

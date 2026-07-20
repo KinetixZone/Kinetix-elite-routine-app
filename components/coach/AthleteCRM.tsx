@@ -171,6 +171,10 @@ const AthleteCalendar: React.FC<{ athleteId: string; onDayClick: (dateStr: strin
     const dStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     return events.filter(e => e.start.startsWith(dStr));
   };
+
+  const currentMonthPrefix = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`;
+  const monthEvents = useMemo(() => events.filter(e => e.start.startsWith(currentMonthPrefix)), [events, currentMonthPrefix]);
+
   return (
     <div className="bg-black/20 rounded-3xl p-6 border border-white/5 relative">
        <div className="flex justify-between items-center mb-6">
@@ -188,11 +192,47 @@ const AthleteCalendar: React.FC<{ athleteId: string; onDayClick: (dateStr: strin
              const hasWorkout = dEvents.length > 0;
              const isVenue = hasWorkout && dEvents[0].location === 'Kinetix Functional Zone';
              return (
-               <div key={idx} onClick={() => onDayClick(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, dEvents[0])} className={`relative aspect-square rounded-xl border flex items-center justify-center cursor-pointer transition-all ${hasWorkout ? isVenue ? 'bg-red-900/50 border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.3)]' : 'bg-white/10 border-white/20' : 'bg-white/5 border-transparent'}`}>
+               <div key={idx} onClick={() => onDayClick(`${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`, dEvents[0])} className={`relative aspect-square rounded-xl border flex flex-col items-center justify-center cursor-pointer transition-all ${hasWorkout ? isVenue ? 'bg-red-900/50 border-red-500 shadow-[0_0_10px_rgba(255,0,0,0.3)]' : 'bg-white/10 border-white/20' : 'bg-white/5 border-transparent'}`}>
                   <span className="text-xs font-bold">{day}</span>
+                  {hasWorkout && (
+                     <div className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  )}
                </div>
              );
           })}
+       </div>
+
+       {/* AGENDA MENSUAL DE RUTINAS */}
+       <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
+          <p className="text-[9px] font-black uppercase text-white/30 tracking-[0.3em] italic">Agenda Mensual de Rutinas</p>
+          <div className="grid grid-cols-1 gap-3 max-h-72 overflow-y-auto custom-scrollbar">
+             {monthEvents.sort((a, b) => a.start.localeCompare(b.start)).map(evt => {
+                const datePart = evt.start.split('T')[0];
+                const isVenue = evt.location === 'Kinetix Functional Zone';
+                return (
+                   <div 
+                      key={evt.id} 
+                      onClick={() => onDayClick(datePart, evt)} 
+                      className={`p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer flex justify-between items-center ${isVenue ? 'bg-red-950/20 border-red-500/30 hover:border-red-500/50' : 'bg-white/[0.02] border-white/5 hover:border-white/10'}`}
+                   >
+                      <div className="space-y-1">
+                         <h4 className="text-xs font-black uppercase italic text-white tracking-wide">{evt.title}</h4>
+                         <div className="flex items-center gap-2">
+                            <span className="text-[8px] font-black text-red-500 bg-red-500/10 px-2 py-0.5 rounded uppercase">{datePart}</span>
+                            <span className="text-[8px] font-black text-white/30 uppercase">{evt.location ? 'Presencial (Sede)' : 'Remoto'}</span>
+                         </div>
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Editar ⚡</span>
+                   </div>
+                );
+             })}
+             {monthEvents.length === 0 && (
+                <div className="py-8 bg-white/[0.01] rounded-3xl border border-dashed border-white/5 flex flex-col items-center justify-center text-center">
+                    <span className="text-lg opacity-30">📅</span>
+                    <p className="text-[10px] font-black uppercase text-white/20 mt-2">Sin entrenamientos planificados este mes</p>
+                </div>
+             )}
+          </div>
        </div>
     </div>
   );
@@ -360,12 +400,46 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                       <div className={`w-12 h-6 rounded-full transition-colors ${editingInstance.location ? 'bg-red-600' : 'bg-white/10'}`} />
                   </div>
                   {editingInstance.exercises.map((ex, idx) => (
-                      <ExerciseBlockEditor key={idx} exercise={ex} onUpdate={(u) => {
-                          const newExs = [...editingInstance.exercises];
-                          newExs[idx] = u;
-                          setEditingInstance({ ...editingInstance, exercises: newExs });
-                      }} />
+                      <div key={idx} className="relative group">
+                          <ExerciseBlockEditor exercise={ex} onUpdate={(u) => {
+                              const newExs = [...editingInstance.exercises];
+                              newExs[idx] = u;
+                              setEditingInstance({ ...editingInstance, exercises: newExs });
+                          }} />
+                          <div className="absolute top-4 right-4 z-10">
+                              <button 
+                                  onClick={() => {
+                                      if (confirm(`¿Seguro que deseas eliminar el ejercicio "${ex.name}"?`)) {
+                                          const newExs = editingInstance.exercises.filter((_, i) => i !== idx);
+                                          setEditingInstance({ ...editingInstance, exercises: newExs });
+                                      }
+                                  }} 
+                                  className="bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                              >
+                                  Eliminar Ejercicio 🗑
+                              </button>
+                          </div>
+                      </div>
                   ))}
+
+                  <button 
+                      onClick={() => {
+                          const newExs = [...editingInstance.exercises, {
+                              exerciseId: 'leg-1',
+                              name: 'Sentadilla (Squat)',
+                              targetSets: 4,
+                              targetReps: '10',
+                              targetLoad: '0',
+                              targetRest: 90,
+                              videoUrl: 'https://www.youtube.com/embed/oSx178WQB70',
+                              method: 'standard' as any
+                          }];
+                          setEditingInstance({ ...editingInstance, exercises: newExs });
+                      }}
+                      className="w-full py-6 bg-white/5 border border-dashed border-white/10 hover:border-white/30 rounded-[32px] text-[10px] font-black uppercase tracking-[0.3em] hover:bg-white/10 transition-all text-white/50 hover:text-white flex items-center justify-center gap-3"
+                  >
+                      Agregar Ejercicio ➕
+                  </button>
               </div>
           </div>
       )}
