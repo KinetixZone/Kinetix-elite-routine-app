@@ -187,7 +187,93 @@ export const WorkoutManager: React.FC = () => {
                         </div>
                     </div>
                </div>
-               {/* Contenido de edición de bloques aquí... */}
+               {/* Contenido de edición de bloques */}
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center px-4">
+                        <h2 className="text-[11px] font-black uppercase tracking-[0.5em] text-white/30 italic">Bloques de Entrenamiento ({editingTemplate.exercises?.length || 0})</h2>
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                const allExs = storageService.getExercises();
+                                const firstEx = allExs[0] || { id: 'ex-1', name: 'Exercise', muscleGroup: 'General', videoUrl: '' };
+                                const newEx: WorkoutExercise = {
+                                    exerciseId: firstEx.id,
+                                    name: firstEx.name,
+                                    targetSets: 3,
+                                    targetReps: '10',
+                                    targetLoad: '0',
+                                    targetRest: 60,
+                                    method: 'standard',
+                                    videoUrl: firstEx.videoUrl
+                                };
+                                setEditingTemplate({
+                                    ...editingTemplate,
+                                    exercises: [...(editingTemplate.exercises || []), newEx]
+                                });
+                            }} 
+                            className="bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                        >
+                            + AÑADIR EJERCICIO
+                        </button>
+                    </div>
+
+                    <div className="space-y-4">
+                        {(editingTemplate.exercises || []).map((ex, idx) => (
+                            <div key={idx} className="relative">
+                                <div className="absolute top-4 right-4 z-10">
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            const filtered = editingTemplate.exercises.filter((_, i) => i !== idx);
+                                            setEditingTemplate({ ...editingTemplate, exercises: filtered });
+                                        }} 
+                                        className="bg-red-900/20 hover:bg-red-600 text-red-500 hover:text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border border-red-500/10 transition-all"
+                                    >
+                                        Eliminar Bloque
+                                    </button>
+                                </div>
+                                <ExerciseBlockEditor 
+                                    exercise={ex} 
+                                    onUpdate={(updated) => {
+                                        const newExs = [...editingTemplate.exercises];
+                                        newExs[idx] = updated;
+                                        setEditingTemplate({ ...editingTemplate, exercises: newExs });
+                                    }}
+                                />
+                            </div>
+                        ))}
+                    </div>
+
+                    {(!editingTemplate.exercises || editingTemplate.exercises.length === 0) && (
+                        <div className="text-center py-16 border border-dashed border-white/5 rounded-[40px]">
+                            <p className="text-[10px] font-black uppercase text-white/20 tracking-widest">No hay ejercicios en esta rutina.</p>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const allExs = storageService.getExercises();
+                                    const firstEx = allExs[0] || { id: 'ex-1', name: 'Exercise', muscleGroup: 'General', videoUrl: '' };
+                                    const newEx: WorkoutExercise = {
+                                        exerciseId: firstEx.id,
+                                        name: firstEx.name,
+                                        targetSets: 3,
+                                        targetReps: '10',
+                                        targetLoad: '0',
+                                        targetRest: 60,
+                                        method: 'standard',
+                                        videoUrl: firstEx.videoUrl
+                                    };
+                                    setEditingTemplate({
+                                        ...editingTemplate,
+                                        exercises: [newEx]
+                                    });
+                                }} 
+                                className="mt-4 bg-white/5 border border-white/10 hover:bg-white hover:text-black text-white px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                            >
+                                + AÑADIR PRIMER EJERCICIO
+                            </button>
+                        </div>
+                    )}
+                </div>
                <button onClick={handleSaveTemplate} className="w-full py-8 bg-green-600 rounded-[40px] text-[10px] font-black uppercase tracking-[0.5em] text-white">GUARDAR MASTER TEMPLATE</button>
            </div>
        )}

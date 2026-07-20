@@ -107,7 +107,21 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
       {/* SELECTOR DE MÉTODO */}
       <div className="flex bg-[#121215] p-2 overflow-x-auto border-b border-white/5 no-scrollbar gap-1">
         {METHODS.map(m => (
-          <button key={m.id} onClick={() => handleUpdate({ method: m.id })} className={`shrink-0 px-4 py-3 rounded-2xl flex items-center gap-2 transition-all ${exercise.method === m.id ? `${m.color} text-black font-black scale-[1.02]` : 'text-white/20 hover:text-white hover:bg-white/5'}`}>
+          <button 
+            key={m.id} 
+            onClick={() => {
+              const updates: Partial<WorkoutExercise> = { method: m.id };
+              if (m.id === 'dropset' && !exercise.dropsetConfig) {
+                updates.dropsetConfig = { drops: [{ weight: '0', reps: '10' }], strategy: 'fixed' };
+              } else if (m.id === 'tabata' && !exercise.tabataConfig) {
+                updates.tabataConfig = { rounds: 8, workTimeSec: 20, restTimeSec: 10, sequence: [{ exerciseId: exercise.exerciseId, name: exercise.name, targetReps: '10', targetLoad: '0' }] };
+              } else if (m.id === 'emom' && !exercise.emomConfig) {
+                updates.emomConfig = { durationMin: 10, sequence: [{ exerciseId: exercise.exerciseId, name: exercise.name, targetReps: '10', targetLoad: '0' }] };
+              }
+              handleUpdate(updates);
+            }} 
+            className={`shrink-0 px-4 py-3 rounded-2xl flex items-center gap-2 transition-all ${exercise.method === m.id ? `${m.color} text-black font-black scale-[1.02]` : 'text-white/20 hover:text-white hover:bg-white/5'}`}
+          >
             <span className="text-sm">{m.icon}</span>
             <span className="text-[9px] font-black uppercase tracking-[0.2em]">{m.label}</span>
           </button>
@@ -200,6 +214,18 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                                 {/* CARDS DROPS */}
                                 {exercise.method === 'dropset' && exercise.dropsetConfig?.drops.map((drop, dIdx) => (
                                     <div key={dIdx} className="bg-purple-900/10 p-3 rounded-2xl border border-purple-500/20 space-y-3 relative overflow-hidden animate-in slide-in-from-left-2">
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const newDrops = [...(exercise.dropsetConfig?.drops || [])].filter((_, idx) => idx !== dIdx);
+                                                handleUpdate({ dropsetConfig: { ...exercise.dropsetConfig, drops: newDrops } });
+                                            }}
+                                            className="absolute top-1 right-2 text-[9px] text-purple-400/40 hover:text-red-500 transition-colors font-black z-10"
+                                            title="Eliminar Drop"
+                                        >
+                                            ✕
+                                        </button>
                                         <div className="flex items-center justify-between">
                                             <span className="text-[7px] font-black text-purple-400 uppercase">DROP {dIdx+1}</span>
                                             <input type="text" className="w-20 bg-transparent text-right text-lg font-black text-purple-300 outline-none" value={(drop.weight || '').split(',')[i]?.trim() || '0'} onChange={e => updateDropMatrix(dIdx, 'weight', i, e.target.value)} />
@@ -227,13 +253,55 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
         {(exercise.method === 'emom' || exercise.method === 'tabata') && (
             <div className="space-y-6 animate-in fade-in">
                 <div className="bg-cyan-950/20 p-8 rounded-[40px] border border-cyan-500/20 flex flex-col md:flex-row justify-between items-center gap-8">
-                    <div>
-                        <label className="text-[10px] font-black text-white/30 uppercase block mb-4 tracking-[0.4em]">{exercise.method === 'emom' ? 'Minutos Totales' : 'Rondas Totales'}</label>
-                        <input type="number" className="bg-transparent text-7xl font-black text-white outline-none w-32 italic" value={exercise.method === 'emom' ? (exercise.emomConfig?.durationMin || 1) : (exercise.tabataConfig?.rounds || 1)} onChange={e => {
-                            const val = parseInt(e.target.value) || 1;
-                            if(exercise.method === 'emom') handleUpdate({ targetSets: val, emomConfig: { ...(exercise.emomConfig || { sequence: [] }), durationMin: val } });
-                            else handleUpdate({ targetSets: val, tabataConfig: { ...(exercise.tabataConfig || { rounds: val, workTimeSec: 20, restTimeSec: 10, sequence: [] }), rounds: val } });
-                        }}/>
+                    <div className="flex flex-wrap items-center gap-8">
+                        <div>
+                            <label className="text-[10px] font-black text-white/30 uppercase block mb-4 tracking-[0.4em]">{exercise.method === 'emom' ? 'Minutos Totales' : 'Rondas Totales'}</label>
+                            <input type="number" className="bg-transparent text-7xl font-black text-white outline-none w-32 italic" value={exercise.method === 'emom' ? (exercise.emomConfig?.durationMin || 1) : (exercise.tabataConfig?.rounds || 1)} onChange={e => {
+                                const val = parseInt(e.target.value) || 1;
+                                if(exercise.method === 'emom') handleUpdate({ targetSets: val, emomConfig: { ...(exercise.emomConfig || { sequence: [] }), durationMin: val } });
+                                else handleUpdate({ targetSets: val, tabataConfig: { ...(exercise.tabataConfig || { rounds: val, workTimeSec: 20, restTimeSec: 10, sequence: [] }), rounds: val } });
+                            }}/>
+                        </div>
+
+                        {exercise.method === 'tabata' && (
+                            <div className="flex gap-6 bg-black/40 px-6 py-4 rounded-3xl border border-white/5">
+                                <div className="space-y-1 text-center">
+                                    <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block">Trabajo (seg)</label>
+                                    <input 
+                                        type="number" 
+                                        className="bg-transparent text-3xl font-black text-pink-500 outline-none w-16 text-center" 
+                                        value={exercise.tabataConfig?.workTimeSec ?? 20} 
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value) || 0;
+                                            handleUpdate({ 
+                                                tabataConfig: { 
+                                                    ...(exercise.tabataConfig || { rounds: 8, restTimeSec: 10, sequence: [] }), 
+                                                    workTimeSec: val 
+                                                } 
+                                            });
+                                        }}
+                                    />
+                                </div>
+                                <div className="w-[1px] bg-white/5 self-stretch" />
+                                <div className="space-y-1 text-center">
+                                    <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block">Descanso (seg)</label>
+                                    <input 
+                                        type="number" 
+                                        className="bg-transparent text-3xl font-black text-white/60 outline-none w-16 text-center" 
+                                        value={exercise.tabataConfig?.restTimeSec ?? 10} 
+                                        onChange={e => {
+                                            const val = parseInt(e.target.value) || 0;
+                                            handleUpdate({ 
+                                                tabataConfig: { 
+                                                    ...(exercise.tabataConfig || { rounds: 8, workTimeSec: 20, sequence: [] }), 
+                                                    restTimeSec: val 
+                                                } 
+                                            });
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div className="text-right">
                         <p className="text-[9px] font-black text-cyan-400 uppercase tracking-[0.2em] mb-2">Protocolo de Secuencia</p>
@@ -269,14 +337,14 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                                     {allExercises.map(ex => <option key={ex.id} value={ex.id} className="bg-black text-white">{ex.name}</option>)}
                                 </select>
                                 <div className="flex gap-2">
-                                  <input type="text" className="w-20 bg-black border border-white/10 rounded-xl p-3 text-center text-xs font-black text-cyan-400" value={item.targetLoad} onChange={e => {
+                                  <input type="text" className="w-20 bg-black border border-white/10 rounded-xl p-3 text-center text-xs font-black text-cyan-400" value={item.targetLoad || ''} onChange={e => {
                                       const key = exercise.method === 'emom' ? 'emomConfig' : 'tabataConfig';
                                       const config = (exercise as any)[key];
                                       const seq = [...(config.sequence || [])];
                                       seq[idx] = { ...seq[idx], targetLoad: e.target.value };
                                       handleUpdate({ [key]: { ...config, sequence: seq } });
                                   }} placeholder="KG"/>
-                                  <input type="text" className="w-16 bg-black border border-white/10 rounded-xl p-3 text-center text-xs font-black text-white" value={item.targetReps} onChange={e => {
+                                  <input type="text" className="w-16 bg-black border border-white/10 rounded-xl p-3 text-center text-xs font-black text-white" value={item.targetReps || ''} onChange={e => {
                                       const key = exercise.method === 'emom' ? 'emomConfig' : 'tabataConfig';
                                       const config = (exercise as any)[key];
                                       const seq = [...(config.sequence || [])];
