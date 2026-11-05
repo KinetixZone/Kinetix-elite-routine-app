@@ -13,7 +13,21 @@ export enum UserLevel {
 
 export type UserRole = 'coach' | 'client' | 'admin' | 'owner';
 
-export type TrainingMethod = 'standard' | 'biserie' | 'ahap' | 'dropset' | 'tabata' | 'emom' | 'superset';
+export type TrainingMethod = 
+  | 'standard' 
+  | 'biserie' 
+  | 'triserie'
+  | 'giant_set'
+  | 'ahap' 
+  | 'dropset' 
+  | 'tabata' 
+  | 'emom' 
+  | 'superset'
+  | 'restpause'
+  | 'topset_backoff'
+  | 'clusters';
+
+export type SetType = 'straight' | 'top_set' | 'back_off' | 'warmup' | 'amrap' | 'rest_pause' | 'drop_set';
 
 export interface Exercise {
   id: string;
@@ -22,6 +36,16 @@ export interface Exercise {
   videoUrl: string;
   technique: string;
   commonErrors: string[];
+}
+
+export interface PRRecord {
+  id?: string;
+  exerciseId: string;
+  exerciseName: string;
+  weight: number;
+  reps: number;
+  estimated1RM: number; // Formula Epley: weight * (1 + reps / 30)
+  date: string;
 }
 
 export interface User {
@@ -43,9 +67,11 @@ export interface User {
   lastWorkoutDate?: string;
   emergencyWorkoutId?: string; 
   cycleEndDate?: string;
+  password?: string;
   age?: number;
   weight?: number;
   medicalConditions?: string;
+  prHistory?: PRRecord[];
 }
 
 export interface CalendarEvent {
@@ -130,7 +156,13 @@ export interface WorkoutExercise {
   targetReps: string;
   targetLoad?: string; 
   targetRest?: number; 
+  targetRir?: string; // Reps In Reserve (ej: "2", "2, 1, 0")
+  targetRpe?: string; // Rating of Perceived Exertion (ej: "8", "@8.5")
+  tempo?: string; // Cadencia excéntrico-isometría-concéntrico (ej: "3-0-1-0")
+  intensityPercent?: string; // % 1RM objetivo (ej: "75%", "80%")
+  setType?: SetType; // Tipo fisiológico de serie
   coachCue?: string; 
+  technicalCues?: string;
   videoUrl?: string;
   method?: TrainingMethod;
   progression?: ProgressionRule;

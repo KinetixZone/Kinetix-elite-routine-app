@@ -1,5 +1,5 @@
 
-import { User, Workout, WorkoutLog, Exercise, BodyMetric, Goal, UserLevel, WorkoutExercise } from '../types/kinetix';
+import { User, Workout, WorkoutLog, Exercise, BodyMetric, Goal, UserLevel, WorkoutExercise, PRRecord } from '../types/kinetix';
 import { EXERCISES_DB } from '../constants/exercises';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -13,7 +13,7 @@ const KEYS = {
   LOG_HISTORY: 'kinetix_workout_history',
   CUSTOM_WORKOUTS: 'kinetix_custom_workouts',
   COMPLETED_SESSIONS: 'kinetix_completed_sessions_ids',
-  EXERCISE_LIBRARY: 'kinetix_exercise_library_v2',
+  EXERCISE_LIBRARY: 'kinetix_exercise_library_v3',
   ATHLETES_DB: 'kinetix_athletes_db',
   STAFF_DB: 'kinetix_staff_db',
   BODY_METRICS: 'kinetix_body_metrics',
@@ -51,6 +51,45 @@ export interface AthleteInsight {
   lastWorkoutDate?: string;
 }
 
+import { PRESET_WORKOUT_TEMPLATES } from '../constants/presetWorkouts';
+
+const DEFAULT_ATHLETES: User[] = [
+  {
+    id: 'ath-1',
+    name: 'Carlos Rodríguez',
+    email: 'carlos@kinetix.com',
+    password: 'kinetix.atleta',
+    role: 'client',
+    goal: Goal.PERFORMANCE,
+    level: UserLevel.ADVANCED,
+    daysPerWeek: 4,
+    equipment: ['Barra', 'Mancuernas', 'Poleas', 'Banca'],
+    streak: 12,
+    createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
+    isActive: true,
+    cycleEndDate: new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0],
+    age: 27,
+    weight: 78
+  },
+  {
+    id: 'ath-2',
+    name: 'Ana García',
+    email: 'ana@kinetix.com',
+    password: 'kinetix.atleta',
+    role: 'client',
+    goal: Goal.GAIN_MUSCLE,
+    level: UserLevel.INTERMEDIATE,
+    daysPerWeek: 4,
+    equipment: ['Barra', 'Mancuernas', 'Poleas'],
+    streak: 8,
+    createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
+    isActive: true,
+    cycleEndDate: new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0],
+    age: 24,
+    weight: 62
+  }
+];
+
 class StorageService {
   getBranding(): BrandingConfig {
       try {
@@ -77,14 +116,50 @@ class StorageService {
 
   getAthletes(): User[] {
     const data = localStorage.getItem(KEYS.ATHLETES_DB);
-    return data ? JSON.parse(data) : [];
+    if (!data) {
+      localStorage.setItem(KEYS.ATHLETES_DB, JSON.stringify(DEFAULT_ATHLETES));
+      return DEFAULT_ATHLETES;
+    }
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_ATHLETES;
+    } catch (e) {
+      return DEFAULT_ATHLETES;
+    }
   }
 
   saveAthletes(athletes: User[]) { localStorage.setItem(KEYS.ATHLETES_DB, JSON.stringify(athletes)); }
 
   getExercises(): Exercise[] {
     const data = localStorage.getItem(KEYS.EXERCISE_LIBRARY);
-    return data ? JSON.parse(data) : EXERCISES_DB;
+    if (!data) {
+      localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(EXERCISES_DB));
+      return EXERCISES_DB;
+    }
+    try {
+      const parsed: Exercise[] = JSON.parse(data);
+      const existingMap = new Map(parsed.map(e => [e.id, e]));
+      let hasChanges = false;
+      EXERCISES_DB.forEach(dbEx => {
+        if (!existingMap.has(dbEx.id)) {
+          existingMap.set(dbEx.id, dbEx);
+          hasChanges = true;
+        } else {
+          const curr = existingMap.get(dbEx.id)!;
+          if ((!curr.videoUrl || curr.videoUrl.trim() === '') && dbEx.videoUrl) {
+            curr.videoUrl = dbEx.videoUrl;
+            hasChanges = true;
+          }
+        }
+      });
+      const merged = Array.from(existingMap.values());
+      if (hasChanges) {
+        localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(merged));
+      }
+      return merged;
+    } catch (e) {
+      return EXERCISES_DB;
+    }
   }
 
   saveExercises(exercises: Exercise[]) { localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(exercises)); }
@@ -102,7 +177,7 @@ class StorageService {
                 query.or(`assignedTo.eq.${athleteId},category.eq.travel`);
             }
             const { data, error } = await query;
-            if (!error && data) {
+            if (!error && data && data.length > 0) {
                 templates = data as Workout[];
                 // Actualizar cache local
                 localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
@@ -113,10 +188,22 @@ class StorageService {
 
     // 2. Fallback a LocalStorage si no hay nube o falla
     const localData = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
-    templates = localData ? JSON.parse(localData) : [];
+    if (localData) {
+      try {
+        templates = JSON.parse(localData);
+      } catch (e) {
+        templates = [];
+      }
+    }
+    
+    // Si no hay plantillas, sembrar las plantillas preguardadas maestras
+    if (!templates || templates.length === 0) {
+      templates = [...PRESET_WORKOUT_TEMPLATES];
+      localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
+    }
     
     if (athleteId) {
-        return templates.filter(t => t.assignedTo === athleteId || t.category === 'travel');
+        return templates.filter(t => t.assignedTo === athleteId || t.category === 'travel' || t.isTemplate);
     }
     return templates;
   }
@@ -165,9 +252,53 @@ class StorageService {
       return results;
   }
 
+  getPRs(athleteId?: string): PRRecord[] {
+    try {
+      const data = localStorage.getItem(KEYS.PRS);
+      const prs: PRRecord[] = data ? JSON.parse(data) : [];
+      return prs;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  savePR(pr: PRRecord) {
+    const prs = this.getPRs().filter(p => p.exerciseId !== pr.exerciseId);
+    prs.push(pr);
+    localStorage.setItem(KEYS.PRS, JSON.stringify(prs));
+  }
+
   saveSessionLogs(logs: WorkoutLog[]) {
-    const current = this.getAllLogs();
-    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([...current, ...logs]));
+    const currentLogs = this.getAllLogs();
+    const currentPRs = this.getPRs();
+    const exercises = this.getExercises();
+
+    const processedLogs = logs.map(log => {
+      const w = Number(log.weight) || 0;
+      const r = Number(log.reps) || 0;
+      if (w > 0 && r > 0 && log.exerciseId !== 'kinetix-class-log') {
+        const est1RM = Math.round(w * (1 + r / 30) * 10) / 10;
+        const existingPR = currentPRs.find(p => p.exerciseId === log.exerciseId);
+        
+        if (!existingPR || est1RM > existingPR.estimated1RM) {
+          const exName = exercises.find(e => e.id === log.exerciseId)?.name || log.exerciseId;
+          const newPR: PRRecord = {
+            id: `pr-${log.exerciseId}-${Date.now()}`,
+            exerciseId: log.exerciseId,
+            exerciseName: exName,
+            weight: w,
+            reps: r,
+            estimated1RM: est1RM,
+            date: new Date().toISOString().split('T')[0]
+          };
+          this.savePR(newPR);
+          return { ...log, isPR: true };
+        }
+      }
+      return log;
+    });
+
+    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([...currentLogs, ...processedLogs]));
   }
 
   getAllLogs(): WorkoutLog[] {
@@ -176,11 +307,45 @@ class StorageService {
   }
 
   getMuscleStatus(): MuscleStatus[] { 
+    const logs = this.getAllLogs();
+    const now = Date.now();
+    const hours72 = 72 * 3600 * 1000;
+
+    const recentLogs = logs.filter(l => {
+      const logTime = new Date(l.timestamp).getTime();
+      return !isNaN(logTime) && (now - logTime) <= hours72;
+    });
+
+    const exercises = this.getExercises();
+    const zoneSets: Record<string, number> = { Push: 0, Pull: 0, Legs: 0, Core: 0 };
+
+    recentLogs.forEach(l => {
+      const ex = exercises.find(e => e.id === l.exerciseId) || EXERCISES_DB.find(e => e.id === l.exerciseId);
+      const name = (ex?.name || '').toLowerCase();
+      const muscle = (ex?.muscleGroup || '').toLowerCase();
+
+      if (muscle.includes('pecho') || muscle.includes('tríceps') || muscle.includes('hombro') || name.includes('press') || name.includes('push')) {
+        zoneSets.Push += 1;
+      } else if (muscle.includes('espalda') || muscle.includes('bíceps') || name.includes('pull') || name.includes('remo') || name.includes('dominada')) {
+        zoneSets.Pull += 1;
+      } else if (muscle.includes('pierna') || muscle.includes('glúteo') || name.includes('sentadilla') || name.includes('squat') || name.includes('prensa')) {
+        zoneSets.Legs += 1;
+      } else {
+        zoneSets.Core += 1;
+      }
+    });
+
+    const calculateStatus = (sets: number): { status: 'fatigued' | 'recovering' | 'optimal'; level: number } => {
+      if (sets >= 8) return { status: 'fatigued', level: Math.max(15, 100 - sets * 7) };
+      if (sets >= 3) return { status: 'recovering', level: Math.max(45, 90 - sets * 8) };
+      return { status: 'optimal', level: 95 };
+    };
+
     return [
-      { zone: 'Push', status: 'optimal', level: 90 },
-      { zone: 'Pull', status: 'recovering', level: 60 },
-      { zone: 'Legs', status: 'fatigued', level: 20 },
-      { zone: 'Core', status: 'optimal', level: 85 }
+      { zone: 'Push', ...calculateStatus(zoneSets.Push) },
+      { zone: 'Pull', ...calculateStatus(zoneSets.Pull) },
+      { zone: 'Legs', ...calculateStatus(zoneSets.Legs) },
+      { zone: 'Core', ...calculateStatus(zoneSets.Core) }
     ];
   }
 
@@ -263,13 +428,50 @@ class StorageService {
       }
   }
 
-  init(d: any) {}
+  init(d: any) {
+    // Seed initial body metrics if none exist
+    if (!localStorage.getItem(KEYS.BODY_METRICS)) {
+      const today = new Date();
+      const defaultMetrics: BodyMetric[] = [
+        { date: new Date(today.getTime() - 14 * 86400000).toISOString().split('T')[0], weight: 79.2, bodyFat: 15.2, waist: 82, chest: 101, arm: 38, thigh: 59 },
+        { date: new Date(today.getTime() - 7 * 86400000).toISOString().split('T')[0], weight: 78.6, bodyFat: 14.8, waist: 81, chest: 102, arm: 38.5, thigh: 59.5 },
+        { date: today.toISOString().split('T')[0], weight: 78.0, bodyFat: 14.4, waist: 80, chest: 102.5, arm: 39, thigh: 60 }
+      ];
+      localStorage.setItem(KEYS.BODY_METRICS, JSON.stringify(defaultMetrics));
+    }
+  }
+
   saveStaff(s: any) {}
   getStaff(): User[] { return []; }
-  saveBodyMetric(m: any) {}
-  getBodyMetrics(): BodyMetric[] { return []; }
-  addOrUpdateExercise(e: any) {}
-  deleteExercise(id: string) {}
+
+  saveBodyMetric(metric: BodyMetric) {
+    const list = this.getBodyMetrics();
+    const updated = [metric, ...list.filter(m => m.date !== metric.date)];
+    localStorage.setItem(KEYS.BODY_METRICS, JSON.stringify(updated));
+  }
+
+  getBodyMetrics(): BodyMetric[] {
+    try {
+      const data = localStorage.getItem(KEYS.BODY_METRICS);
+      if (!data) return [];
+      return JSON.parse(data);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  addOrUpdateExercise(exercise: Exercise) {
+    const list = this.getExercises();
+    const idx = list.findIndex(e => e.id === exercise.id);
+    if (idx >= 0) list[idx] = exercise;
+    else list.push(exercise);
+    this.saveExercises(list);
+  }
+
+  deleteExercise(id: string) {
+    const list = this.getExercises().filter(e => e.id !== id);
+    this.saveExercises(list);
+  }
   
   getAthleteInsights(): AthleteInsight[] { 
     return [

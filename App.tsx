@@ -50,7 +50,6 @@ const App: React.FC = () => {
         if (localUser) {
             setUser(localUser);
             if (localUser.role === 'client') setView('athlete_home');
-            else if (localUser.role === 'owner') setView('admin_dashboard');
             else setView('home');
         }
         setIsLoading(false);
@@ -87,8 +86,7 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (newUser: User) => {
       setUser(newUser);
-      if (newUser.role === 'owner') setView('admin_dashboard');
-      else if (newUser.role === 'client') setView('athlete_home');
+      if (newUser.role === 'client') setView('athlete_home');
       else setView('home');
   };
 
@@ -153,6 +151,58 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#050507] text-white pb-32">
+        {/* Barra Superior de Identidad de Coach / Dueño */}
+        <header className="sticky top-0 z-[400] bg-[#050507]/90 backdrop-blur-xl border-b border-white/5 px-4 md:px-8 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 font-black italic">
+                    K
+                </div>
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-black uppercase text-white/90 tracking-wider">
+                            {user.name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/30">
+                            {user.role === 'owner' ? 'DUEÑO / COACH' : 'COACH'}
+                        </span>
+                    </div>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">
+                        {user.email} • Modo Operativo Central
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+                <button 
+                    onClick={() => setView('crm')} 
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
+                >
+                    <span>👥</span> Atletas
+                </button>
+                <button 
+                    onClick={() => setView('manager')} 
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
+                >
+                    <span>📐</span> Protocolo
+                </button>
+                {(user.role === 'admin' || user.role === 'owner') && (
+                    <button 
+                        onClick={() => setView('admin_dashboard')} 
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-red-500/40 transition-all"
+                    >
+                        <span>🔐</span> Búnker
+                    </button>
+                )}
+                <button 
+                    onClick={handleLogout} 
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/50 hover:text-red-400 text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
+                    title="Cerrar Sesión"
+                >
+                    Salir 🚪
+                </button>
+            </div>
+        </header>
+
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/10 px-6 md:px-10 py-5 rounded-[35px] flex gap-8 md:gap-14 z-[500] shadow-[0_30px_70px_rgba(0,0,0,0.8)]">
             <button onClick={() => setView('home')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">📊</span>

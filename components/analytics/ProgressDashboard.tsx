@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { storageService } from '../../services/storageService';
 import { EXERCISES_DB } from '../../constants/exercises';
 import { BodyMetric } from '../../types/kinetix';
+import { ProgressChart } from './ProgressChart';
 
 // HELPER: Categorías de músculos para simplificar el análisis
 const MUSCLE_ZONES: Record<string, string> = {
@@ -470,43 +471,8 @@ export const ProgressDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* SECCIÓN 4: GRÁFICA DE VOLUMEN */}
-            <div className="bg-[#0F0F11] rounded-[40px] border border-white/5 p-8 shadow-2xl relative overflow-hidden group">
-                <div className="relative z-10 flex justify-between items-end mb-8">
-                <div>
-                    <span className="text-[10px] font-black text-red-600 uppercase tracking-[0.4em] mb-2 block">Carga Semanal</span>
-                    <p className="text-3xl font-black text-white">
-                        {volumeData[volumeData.length - 1]?.[1].isClass 
-                            ? <span className="text-lg">~600 <span className="text-[10px]">KCAL</span></span> 
-                            : <>{Math.floor(volumeData[volumeData.length - 1]?.[1].vol || 0)} <span className="text-xs text-white/30">KG</span></>
-                        }
-                    </p>
-                </div>
-                </div>
-
-                <div className="h-32 flex items-end gap-2">
-                {volumeData.map(([date, data], i) => (
-                    <div key={date} className="flex-1 flex flex-col items-center group/bar">
-                    <div className="relative w-full flex flex-col items-center">
-                        <div 
-                        className={`w-full rounded-t-lg transition-all duration-700 ${
-                            data.isClass 
-                                ? 'bg-gradient-to-t from-red-600 via-orange-500 to-yellow-500' 
-                                : 'bg-white/10 group-hover/bar:bg-red-600'
-                        }`}
-                        style={{ height: `${(data.vol / maxVol) * 100}%`, minHeight: '4px' }}
-                        />
-                    </div>
-                    <p className="text-[8px] font-black text-white/20 uppercase mt-2">{date.split('-')[2]}</p>
-                    </div>
-                ))}
-                {volumeData.length === 0 && (
-                    <div className="w-full h-full flex items-center justify-center border border-dashed border-white/5 rounded-3xl">
-                    <p className="text-[9px] font-black text-white/10 uppercase tracking-widest">Sin actividad reciente</p>
-                    </div>
-                )}
-                </div>
-            </div>
+            {/* SECCIÓN 4: GRÁFICA DE TONELAJE Y SOBRECARGA PROGRESIVA CON RECHARTS */}
+            <ProgressChart logs={logs} />
 
             {/* SECCIÓN 5: PRs RECIENTES */}
             <div className="bg-[#0F0F11] rounded-[40px] border border-white/5 p-8 shadow-2xl">

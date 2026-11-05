@@ -10,10 +10,11 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^1.39.0",
+    "@supabase/supabase-js": "^2.45.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "@google/genai": "^1.39.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/react": "19.0.0",

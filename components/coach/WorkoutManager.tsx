@@ -4,15 +4,17 @@ import { Workout, WorkoutExercise, Exercise, User } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
+import { ExerciseLibrary } from '../admin/ExerciseLibrary';
 import { aiService } from '../../services/aiService';
 
 export const WorkoutManager: React.FC = () => {
-  const [view, setView] = useState<'list' | 'editor' | 'assign' | 'meso'>('list');
+  const [view, setView] = useState<'list' | 'editor' | 'assign' | 'meso' | 'library'>('list');
   const [templates, setTemplates] = useState<Workout[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<Workout | null>(null);
   const [assignTarget, setAssignTarget] = useState<Workout | null>(null);
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
+  const [exerciseCount, setExerciseCount] = useState<number>(0);
   const [projConfig, setProjConfig] = useState({ 
     startDate: new Date().toISOString().split('T')[0], 
     weeks: 4, 
@@ -27,6 +29,7 @@ export const WorkoutManager: React.FC = () => {
     const all = await storageService.getTemplates();
     setTemplates(all.filter(t => t.isTemplate !== false));
     setAthletes(storageService.getAthletes());
+    setExerciseCount(storageService.getExercises().length);
   };
 
   const handleSaveTemplate = async () => {
@@ -120,16 +123,22 @@ export const WorkoutManager: React.FC = () => {
           <div>
              <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.4em] mb-2 animate-pulse">Kinetix Coach Pro</p>
              <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-tight">
-                {view === 'list' ? 'Routine Manager' : view === 'editor' ? 'Protocol Editor' : view === 'meso' ? 'Meso Architect' : 'Assign Protocol'}
+                {view === 'list' ? 'Routine Manager' : view === 'editor' ? 'Protocol Editor' : view === 'meso' ? 'Meso Architect' : view === 'library' ? 'Biblioteca de Ejercicios' : 'Assign Protocol'}
              </h1>
           </div>
           {view === 'list' && (
-             <div className="flex gap-4">
-                <button onClick={() => {setEditingTemplate({ id: `tpl-${Date.now()}`, name: '', publicTitle: '', category: 'general', day: 1, exercises: [], isTemplate: true }); setView('editor');}} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">+ MANUAL</button>
+             <div className="flex flex-wrap gap-3">
+                <button 
+                  onClick={() => setView('library')} 
+                  className="bg-red-600/15 border border-red-500/40 text-red-300 hover:bg-red-600 hover:text-white px-5 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                >
+                  <span>📚</span> Biblioteca ({exerciseCount} Videos)
+                </button>
+                <button onClick={() => {setEditingTemplate({ id: `tpl-${Date.now()}`, name: '', publicTitle: '', category: 'general', day: 1, exercises: [], isTemplate: true }); setView('editor');}} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">+ NUEVA RUTINA</button>
              </div>
           )}
           {view !== 'list' && (
-             <button onClick={() => setView('list')} className="bg-white/5 border border-white/10 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest">VOLVER</button>
+             <button onClick={() => setView('list')} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">← VOLVER</button>
           )}
        </div>
 
@@ -252,7 +261,11 @@ export const WorkoutManager: React.FC = () => {
                                     targetSets: 3,
                                     targetReps: '10',
                                     targetLoad: '0',
-                                    targetRest: 60,
+                                    targetRest: 90,
+                                    targetRir: '2',
+                                    tempo: '3-0-1-0',
+                                    setType: 'straight',
+                                    coachCue: firstEx.technique,
                                     method: 'standard',
                                     videoUrl: firstEx.videoUrl
                                 };
@@ -308,7 +321,11 @@ export const WorkoutManager: React.FC = () => {
                                         targetSets: 3,
                                         targetReps: '10',
                                         targetLoad: '0',
-                                        targetRest: 60,
+                                        targetRest: 90,
+                                        targetRir: '2',
+                                        tempo: '3-0-1-0',
+                                        setType: 'straight',
+                                        coachCue: firstEx.technique,
                                         method: 'standard',
                                         videoUrl: firstEx.videoUrl
                                     };
@@ -326,6 +343,12 @@ export const WorkoutManager: React.FC = () => {
                 </div>
                <button onClick={handleSaveTemplate} className="w-full py-8 bg-green-600 rounded-[40px] text-[10px] font-black uppercase tracking-[0.5em] text-white">GUARDAR MASTER TEMPLATE</button>
            </div>
+       )}
+
+       {view === 'library' && (
+         <div className="space-y-6 animate-in fade-in duration-300">
+           <ExerciseLibrary isEmbedded={true} />
+         </div>
        )}
     </div>
   );

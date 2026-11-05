@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { User, Workout } from '../../types/kinetix';
+import { User, Workout, Goal, UserLevel, PRRecord } from '../../types/kinetix';
 import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
 import { storageService, MuscleStatus } from '../../services/storageService';
@@ -79,7 +79,66 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
   const [showPlanB, setShowPlanB] = useState(false);
   const [showChat, setShowChat] = useState(false);
   
+  // PROFILE & PR MANAGEMENT STATES
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: user.name,
+    level: user.level,
+    goal: user.goal,
+    weight: user.weight || 75,
+    age: user.age || 26,
+    medicalConditions: user.medicalConditions || ''
+  });
+  const [prsList, setPrsList] = useState<PRRecord[]>(() => storageService.getPRs());
+  const [showAddPrModal, setShowAddPrModal] = useState(false);
+  const [newPrInput, setNewPrInput] = useState({
+    exerciseName: '',
+    weight: 100,
+    reps: 1
+  });
+  
   const coachWhatsApp = "https://wa.me/525627303189";
+
+  const handleSaveProfile = () => {
+    const updatedUser: User = {
+      ...user,
+      name: profileForm.name,
+      level: profileForm.level,
+      goal: profileForm.goal,
+      weight: profileForm.weight,
+      age: profileForm.age,
+      medicalConditions: profileForm.medicalConditions
+    };
+    storageService.saveUser(updatedUser);
+    
+    // Also update in athletes list
+    const athletes = storageService.getAthletes();
+    const idx = athletes.findIndex(a => a.id === user.id);
+    if (idx >= 0) {
+      athletes[idx] = updatedUser;
+      storageService.saveAthletes(athletes);
+    }
+    
+    setIsEditingProfile(false);
+  };
+
+  const handleSaveNewPr = () => {
+    if (!newPrInput.exerciseName.trim() || newPrInput.weight <= 0) return;
+    const est1RM = Math.round(newPrInput.weight * (1 + newPrInput.reps / 30) * 10) / 10;
+    const newRecord: PRRecord = {
+      id: `pr-${Date.now()}`,
+      exerciseId: `custom-${Date.now()}`,
+      exerciseName: newPrInput.exerciseName.trim(),
+      weight: newPrInput.weight,
+      reps: newPrInput.reps,
+      estimated1RM: est1RM,
+      date: new Date().toISOString().split('T')[0]
+    };
+    storageService.savePR(newRecord);
+    setPrsList(storageService.getPRs());
+    setShowAddPrModal(false);
+    setNewPrInput({ exerciseName: '', weight: 100, reps: 1 });
+  };
 
   const isWorkoutEmpty = !currentWorkout || currentWorkout.id === 'empty-state' || currentWorkout.exercises.length === 0;
 
@@ -284,16 +343,236 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
          
          {activeTab === 'profile' && (
              <div className="pb-28 animate-in fade-in space-y-6">
-                 <div className="flex flex-col items-center pt-10">
-                     <div className="w-32 h-32 rounded-full bg-gradient-to-br from-red-600 to-black border-8 border-white/5 flex items-center justify-center text-5xl font-black shadow-2xl mb-6">{user.name.charAt(0)}</div>
-                     <h2 className="text-3xl font-black uppercase italic tracking-tighter">{user.name}</h2>
-                     <p className="text-[10px] text-white/30 font-black uppercase tracking-widest mt-2">{user.level} // {user.goal}</p>
+                 {/* AVATAR & BASIC BADGE */}
+                 <div className="flex flex-col items-center pt-6">
+                     <div className="w-28 h-28 rounded-full bg-gradient-to-br from-red-600 via-red-900 to-black border-4 border-white/10 flex items-center justify-center text-4xl font-black shadow-[0_0_30px_rgba(255,0,0,0.3)] mb-4">
+                       {user.name.charAt(0)}
+                     </div>
+                     <h2 className="text-2xl font-black uppercase italic tracking-tighter">{user.name}</h2>
+                     <div className="flex items-center gap-2 mt-1">
+                       <span className="px-3 py-0.5 bg-red-600/20 border border-red-500/30 rounded-full text-[9px] font-black uppercase text-red-400">
+                         {user.level}
+                       </span>
+                       <span className="text-white/20">•</span>
+                       <span className="text-[10px] text-white/40 font-black uppercase tracking-wider">{user.goal}</span>
+                     </div>
                  </div>
+
+                 {/* CREDENTIALS CARD */}
+                 <div className="bg-[#0F0F11] border border-white/5 rounded-[32px] p-6 space-y-2">
+                   <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/30">Credenciales de Acceso Asignadas</p>
+                   <div className="flex justify-between items-center text-xs pt-1">
+                     <span className="text-white/50 font-mono">{user.email}</span>
+                     <span className="bg-white/5 px-2.5 py-1 rounded-lg text-white/60 font-mono text-[10px]">
+                       {user.password ? `Pass: ${user.password}` : 'Clave asignada por Coach'}
+                     </span>
+                   </div>
+                 </div>
+
+                 {/* PROFILE EDIT TOGGLE & FORM */}
                  <div className="bg-[#0F0F11] border border-white/5 rounded-[32px] p-6 space-y-4">
-                    <a href={coachWhatsApp} target="_blank" rel="noreferrer" className="w-full py-5 bg-white/5 border border-white/10 flex items-center justify-center gap-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em]">
-                        SOPORTE COACH
+                   <div className="flex justify-between items-center">
+                     <h3 className="text-xs font-black uppercase tracking-widest text-white/60">Ficha del Atleta</h3>
+                     <button 
+                       onClick={() => setIsEditingProfile(!isEditingProfile)} 
+                       className="text-[9px] font-black uppercase text-red-500 hover:text-red-400 tracking-wider"
+                     >
+                       {isEditingProfile ? 'Cancelar' : 'Editar Ficha ✏️'}
+                     </button>
+                   </div>
+
+                   {!isEditingProfile ? (
+                     <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                       <div className="bg-black/40 p-3 rounded-2xl border border-white/5">
+                         <p className="text-[8px] font-black uppercase text-white/30">Peso Corporal</p>
+                         <p className="text-base font-black text-white italic">{user.weight || 75} <span className="text-[10px] text-white/40 not-italic">KG</span></p>
+                       </div>
+                       <div className="bg-black/40 p-3 rounded-2xl border border-white/5">
+                         <p className="text-[8px] font-black uppercase text-white/30">Edad</p>
+                         <p className="text-base font-black text-white italic">{user.age || 26} <span className="text-[10px] text-white/40 not-italic">AÑOS</span></p>
+                       </div>
+                       <div className="col-span-2 bg-black/40 p-3 rounded-2xl border border-white/5">
+                         <p className="text-[8px] font-black uppercase text-white/30">Condiciones Médicas / Lesiones</p>
+                         <p className="text-xs font-medium text-white/70 italic mt-0.5">{user.medicalConditions || user.injuries || 'Ninguna registrada'}</p>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="space-y-3 pt-2">
+                       <div>
+                         <label className="text-[8px] font-black uppercase text-white/30">Nombre Completo</label>
+                         <input 
+                           type="text" 
+                           className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                           value={profileForm.name} 
+                           onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} 
+                         />
+                       </div>
+                       <div className="grid grid-cols-2 gap-3">
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Nivel de Atleta</label>
+                           <select 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={profileForm.level}
+                             onChange={e => setProfileForm({ ...profileForm, level: e.target.value as UserLevel })}
+                           >
+                             <option value={UserLevel.BEGINNER}>{UserLevel.BEGINNER}</option>
+                             <option value={UserLevel.INTERMEDIATE}>{UserLevel.INTERMEDIATE}</option>
+                             <option value={UserLevel.ADVANCED}>{UserLevel.ADVANCED}</option>
+                           </select>
+                         </div>
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Objetivo</label>
+                           <select 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={profileForm.goal}
+                             onChange={e => setProfileForm({ ...profileForm, goal: e.target.value as Goal })}
+                           >
+                             <option value={Goal.GAIN_MUSCLE}>{Goal.GAIN_MUSCLE}</option>
+                             <option value={Goal.LOSE_FAT}>{Goal.LOSE_FAT}</option>
+                             <option value={Goal.PERFORMANCE}>{Goal.PERFORMANCE}</option>
+                           </select>
+                         </div>
+                       </div>
+                       <div className="grid grid-cols-2 gap-3">
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Peso (Kg)</label>
+                           <input 
+                             type="number" 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={profileForm.weight} 
+                             onChange={e => setProfileForm({ ...profileForm, weight: parseFloat(e.target.value) || 0 })} 
+                           />
+                         </div>
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Edad</label>
+                           <input 
+                             type="number" 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={profileForm.age} 
+                             onChange={e => setProfileForm({ ...profileForm, age: parseInt(e.target.value) || 0 })} 
+                           />
+                         </div>
+                       </div>
+                       <div>
+                         <label className="text-[8px] font-black uppercase text-white/30">Observaciones Técnicas / Lesiones</label>
+                         <textarea 
+                           className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-medium outline-none focus:border-red-600 h-16"
+                           value={profileForm.medicalConditions} 
+                           onChange={e => setProfileForm({ ...profileForm, medicalConditions: e.target.value })} 
+                           placeholder="Ej: Molestia en rodilla derecha..."
+                         />
+                       </div>
+                       <button 
+                         onClick={handleSaveProfile}
+                         className="w-full py-3.5 bg-red-600 hover:bg-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest text-white shadow-lg transition-transform active:scale-95"
+                       >
+                         Guardar Cambios
+                       </button>
+                     </div>
+                   )}
+                 </div>
+
+                 {/* PERSONAL RECORDS (PRs) & 1RM TRACKER */}
+                 <div className="bg-[#0F0F11] border border-white/5 rounded-[32px] p-6 space-y-4">
+                   <div className="flex justify-between items-center">
+                     <div>
+                       <h3 className="text-xs font-black uppercase tracking-widest text-white/60">Récords Personales (PR & 1RM)</h3>
+                       <p className="text-[7px] text-white/30 font-black uppercase tracking-wider mt-0.5">Fórmula Epley: Peso × (1 + Reps/30)</p>
+                     </div>
+                     <button 
+                       onClick={() => setShowAddPrModal(true)}
+                       className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[8px] font-black uppercase tracking-wider text-white"
+                     >
+                       + Nuevo PR
+                     </button>
+                   </div>
+
+                   <div className="space-y-2 pt-1">
+                     {prsList.length > 0 ? (
+                       prsList.map((pr, idx) => (
+                         <div key={idx} className="bg-black/40 border border-white/5 p-3.5 rounded-2xl flex justify-between items-center">
+                           <div>
+                             <p className="text-xs font-black uppercase italic text-white">{pr.exerciseName}</p>
+                             <p className="text-[8px] text-white/30 font-bold uppercase mt-0.5">
+                               {pr.weight} kg × {pr.reps} reps • {pr.date}
+                             </p>
+                           </div>
+                           <div className="text-right">
+                             <span className="text-[8px] text-red-500 font-black uppercase block">1RM Estimado</span>
+                             <span className="text-base font-black text-white italic">{pr.estimated1RM} <span className="text-[9px] text-white/40 not-italic">KG</span></span>
+                           </div>
+                         </div>
+                       ))
+                     ) : (
+                       <div className="py-6 text-center text-white/20 text-[9px] font-black uppercase tracking-widest">
+                         Sin récords registrados aún. Se actualizan automáticamente en el tracker.
+                       </div>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* MODAL REGISTRAR PR MANUAL */}
+                 {showAddPrModal && (
+                   <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in-95">
+                     <div className="bg-[#121215] w-full max-w-sm rounded-[32px] border border-white/10 p-6 space-y-4">
+                       <div className="flex justify-between items-center">
+                         <h4 className="text-xs font-black uppercase tracking-widest text-white">Registrar Récord (PR)</h4>
+                         <button onClick={() => setShowAddPrModal(false)} className="text-xs text-white/40 hover:text-white">✕</button>
+                       </div>
+                       <div>
+                         <label className="text-[8px] font-black uppercase text-white/30">Nombre Ejercicio</label>
+                         <input 
+                           type="text" 
+                           placeholder="Ej: Press de Banca" 
+                           className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                           value={newPrInput.exerciseName}
+                           onChange={e => setNewPrInput({ ...newPrInput, exerciseName: e.target.value })}
+                         />
+                       </div>
+                       <div className="grid grid-cols-2 gap-3">
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Peso (Kg)</label>
+                           <input 
+                             type="number" 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={newPrInput.weight}
+                             onChange={e => setNewPrInput({ ...newPrInput, weight: parseFloat(e.target.value) || 0 })}
+                           />
+                         </div>
+                         <div>
+                           <label className="text-[8px] font-black uppercase text-white/30">Reps Logradas</label>
+                           <input 
+                             type="number" 
+                             className="w-full bg-black border border-white/10 rounded-xl p-3 text-xs text-white font-bold outline-none focus:border-red-600"
+                             value={newPrInput.reps}
+                             onChange={e => setNewPrInput({ ...newPrInput, reps: parseInt(e.target.value) || 1 })}
+                           />
+                         </div>
+                       </div>
+                       <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-center">
+                         <p className="text-[8px] font-black uppercase text-red-400">1RM Estimado Resultante</p>
+                         <p className="text-xl font-black text-white italic">
+                           {Math.round(newPrInput.weight * (1 + newPrInput.reps / 30) * 10) / 10} KG
+                         </p>
+                       </div>
+                       <button 
+                         onClick={handleSaveNewPr}
+                         className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg"
+                       >
+                         Guardar PR
+                       </button>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* LOGOUT & SUPPORT BUTTONS */}
+                 <div className="bg-[#0F0F11] border border-white/5 rounded-[32px] p-6 space-y-3">
+                    <a href={coachWhatsApp} target="_blank" rel="noreferrer" className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center gap-3 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-colors">
+                        SOPORTE DIRECTO COACH 📲
                     </a>
-                    <button onClick={onLogout} className="w-full py-5 bg-red-900/10 text-red-600 border border-red-600/20 rounded-2xl text-[10px] font-black uppercase tracking-widest">LOGOUT TERMINAL</button>
+                    <button onClick={onLogout} className="w-full py-4 bg-red-900/10 text-red-500 hover:bg-red-900/20 border border-red-600/20 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-colors">
+                      CERRAR SESIÓN TERMINAL 🚪
+                    </button>
                  </div>
              </div>
          )}

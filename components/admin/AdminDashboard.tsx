@@ -46,9 +46,9 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
         aiDiag: !config.enableAI ? 'DESACTIVADO' : hasAiKey ? 'EN LINEA' : 'SIMULACIÓN',
         dbDiag: !config.enableCloud ? 'OFFLINE' : hasSupabase ? 'SYNC OK' : 'LOCAL',
         version: '7.0.0-Obsidian',
-        owner: 'Jorge González'
+        owner: currentUser?.name || 'Leslie Barrera & Jorge González (Dueños)'
       };
-  }, [config]);
+  }, [config, currentUser]);
 
   const toggleFeature = (feature: keyof SystemConfig) => {
       const newConfig = { ...config, [feature]: !config[feature] };
