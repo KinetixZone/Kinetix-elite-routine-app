@@ -392,5 +392,209 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       }
     ]
+  },
+  {
+    id: 'tpl-vacaciones-hotel-fullbody',
+    name: '[VIAJE] Hotel Gym: Full Body Funcional & Hipertrofia',
+    publicTitle: 'Hotel Gym Express',
+    category: 'travel',
+    day: 1,
+    isTemplate: true,
+    exercises: [
+      {
+        exerciseId: 'qd-05',
+        name: 'Goblet Squat (Mancuerna Hotel)',
+        targetSets: 4,
+        targetReps: '12, 12, 12, 12',
+        targetLoad: '16, 18, 20, 20',
+        targetRest: 60,
+        targetRir: '2, 2, 1, 1',
+        targetRpe: '8, 8, 8.5, 9',
+        tempo: '3-1-1-0',
+        setType: 'straight',
+        coachCue: 'Mancuerna pegada al esternón, codos apuntando abajo, máxima profundidad.',
+        videoUrl: 'https://youtube.com/shorts/yTDROg8zZsU?si=rcvKpx7tNuH2LrjC',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'ch-11',
+        name: 'Press Inclinado con Mancuernas',
+        targetSets: 4,
+        targetReps: '10, 10, 10, 12',
+        targetLoad: '18, 20, 20, 18',
+        targetRest: 60,
+        targetRir: '2, 1, 1, 1',
+        targetRpe: '8, 8.5, 9, 9',
+        tempo: '3-0-1-0',
+        setType: 'straight',
+        coachCue: 'Trayectoria convergente, no chocar mancuernas arriba.',
+        videoUrl: 'https://youtube.com/shorts/TNmeGZp9ols?si=k1mafvxCM_8ff2K3',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'bk-10',
+        name: 'Remo con Mancuerna Apoyo en Pecho',
+        targetSets: 4,
+        targetReps: '10, 10, 10, 10',
+        targetLoad: '16, 18, 18, 18',
+        targetRest: 60,
+        targetRir: '2, 2, 1, 1',
+        targetRpe: '8, 8, 8.5, 9',
+        tempo: '2-0-1-1',
+        setType: 'straight',
+        coachCue: 'Pausar 1 segundo con escápulas apretadas sin despegar el pecho del banco.',
+        videoUrl: 'https://youtu.be/sOij1orUmbk?si=a1sXZqJvoPqK-FhG',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'sh-03',
+        name: 'Elevación Lateral con Mancuernas',
+        targetSets: 3,
+        targetReps: '15, 15, 15',
+        targetLoad: '8, 8, 8',
+        targetRest: 45,
+        targetRir: '1, 1, 0',
+        targetRpe: '8.5, 9, 9.5',
+        tempo: '2-0-1-1',
+        setType: 'straight',
+        coachCue: 'Conducir con los codos en el plano escapular.',
+        videoUrl: 'https://youtube.com/shorts/vwfaFckD1JI?si=JP_WjrUF4SVQbZts',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'iso-01',
+        name: 'Plancha Baja en Antebrazos',
+        targetSets: 3,
+        targetReps: '45s, 45s, 60s',
+        targetLoad: '0, 0, 0',
+        targetRest: 45,
+        targetRir: '1, 1, 0',
+        tempo: '1-0-1-0',
+        setType: 'straight',
+        coachCue: 'Glúteos y abdomen como roca, empujar suelo con codos.',
+        videoUrl: 'https://youtube.com/shorts/3AM7L2k7BEw?si=vEbQE6-xEuzwHEdQ',
+        method: 'standard'
+      }
+    ]
+  },
+  {
+    id: 'tpl-vacaciones-cero-equipo',
+    name: '[VIAJE] Zero Equipment: Habitación / Playa (Peso Corporal)',
+    publicTitle: 'Zero Equip Vacation',
+    category: 'travel',
+    day: 2,
+    isTemplate: true,
+    exercises: [
+      {
+        exerciseId: 'ch-05',
+        name: 'Lagartijas con Pausa Isométrica',
+        targetSets: 4,
+        targetReps: '15, 15, 12, 12',
+        targetLoad: '0, 0, 0, 0',
+        targetRest: 45,
+        targetRir: '1, 1, 0, 0',
+        tempo: '3-1-1-0',
+        setType: 'straight',
+        coachCue: 'Pausar 1 segundo rozando el piso antes de empujar con fuerza.',
+        videoUrl: 'https://youtube.com/shorts/SKX9JimnGpg?si=9RoUL8CQrt4SOX6h',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'fn-06',
+        name: 'Burpees Kinetix Combat',
+        targetSets: 4,
+        targetReps: '12, 12, 12, 12',
+        targetLoad: '0, 0, 0, 0',
+        targetRest: 60,
+        targetRir: '1, 0, 0, 0',
+        tempo: '1-0-1-0',
+        setType: 'straight',
+        coachCue: 'Pecho a tierra y despegue explosivo con palmada sobre la cabeza.',
+        videoUrl: 'https://youtube.com/shorts/EkK3oVBA__Q?si=_aaScPjJPih7Dp4c',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'gl-06',
+        name: 'Desplantes Alternos Pliométricos',
+        targetSets: 3,
+        targetReps: '20, 20, 20',
+        targetLoad: '0, 0, 0',
+        targetRest: 45,
+        targetRir: '1, 1, 0',
+        tempo: '2-0-1-0',
+        setType: 'straight',
+        coachCue: 'Rodilla trasera roza el suelo, torso recto.',
+        videoUrl: 'https://youtube.com/shorts/h8T5Bx0d0fk?si=EB-w3zaZV8F2Iwl9',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'iso-03',
+        name: 'Barquito Isométrico (Hollow Body)',
+        targetSets: 3,
+        targetReps: '30s, 30s, 40s',
+        targetLoad: '0, 0, 0',
+        targetRest: 45,
+        tempo: '1-0-1-0',
+        setType: 'straight',
+        coachCue: 'Espalda baja aplastada en el suelo, cuerpo en cuchara.',
+        videoUrl: 'https://youtube.com/shorts/lJoKi3-XYuw?si=IOLEJ4DGqawF40Xj',
+        method: 'standard'
+      }
+    ]
+  },
+  {
+    id: 'tpl-personalizado-jorge-power',
+    name: '[PERSONALIZADO JORGE] Fuerza Máxima & Recomposición 1-on-1',
+    publicTitle: 'Jorge Gonzalez 1-on-1',
+    category: 'personalizado',
+    day: 3,
+    isTemplate: true,
+    exercises: [
+      {
+        exerciseId: 'qd-01',
+        name: 'Sentadilla Trasera (Back Squat)',
+        targetSets: 4,
+        targetReps: '5, 5, 5, 5',
+        targetLoad: '90, 95, 100, 100',
+        targetRest: 150,
+        targetRir: '2, 1, 1, 1',
+        targetRpe: '8, 8.5, 9, 9',
+        tempo: '3-1-1-0',
+        setType: 'top_set',
+        coachCue: 'Retener aire diafragmático (maniobra de Valsalva), quebrar el paralelo con rodillas estables.',
+        videoUrl: 'https://youtube.com/shorts/oSxJ78WQBZ0?si=GQP3M0V-w-LFXlXZ',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'ch-01',
+        name: 'Press Horizontal (Banca Plana)',
+        targetSets: 4,
+        targetReps: '6, 6, 8, 8',
+        targetLoad: '75, 80, 80, 75',
+        targetRest: 120,
+        targetRir: '2, 1, 1, 1',
+        targetRpe: '8, 9, 9, 8.5',
+        tempo: '3-0-1-0',
+        setType: 'top_set',
+        coachCue: 'Arco lumbar fisiológico, talones clavados, codos a 45 grados.',
+        videoUrl: 'https://youtu.be/g8oG_jaAxvs?si=ymgMP-_XlUqbZ3TH',
+        method: 'standard'
+      },
+      {
+        exerciseId: 'hm-01',
+        name: 'Peso Muerto Rumano',
+        targetSets: 4,
+        targetReps: '8, 8, 8, 8',
+        targetLoad: '80, 85, 90, 90',
+        targetRest: 120,
+        targetRir: '2, 2, 1, 1',
+        targetRpe: '8, 8, 8.5, 9',
+        tempo: '3-1-1-0',
+        setType: 'straight',
+        coachCue: 'Empujar cadera hacia atrás como tocando pared, mantener barra rozando espinillas.',
+        videoUrl: 'https://youtube.com/shorts/9z6AYqXkBbY?si=iZgw0BHjmIKFMxIu',
+        method: 'standard'
+      }
+    ]
   }
 ];

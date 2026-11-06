@@ -76,42 +76,54 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
             <div className="relative z-10 w-full max-w-md flex flex-col items-center space-y-6 animate-in fade-in duration-700">
                 
                 {/* Logo Section */}
-                <div className="flex flex-col items-center gap-4">
-                    <div className={`w-20 h-20 md:w-24 md:h-24 bg-black/60 backdrop-blur-xl border-2 rounded-[28px] flex items-center justify-center transition-all duration-500 shadow-2xl ${isAdminMode ? 'border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.4)] scale-105' : 'border-white/10'}`}>
-                        {branding.logoUrl ? (
-                            <img src={branding.logoUrl} alt="Kinetix Logo" className="w-14 h-14 object-contain" />
-                        ) : (
-                            <span className="text-5xl font-black italic tracking-tighter text-red-600">K</span>
-                        )}
+                <div className="flex flex-col items-center gap-3">
+                    <div className="relative group">
+                        <div className="absolute -inset-1.5 bg-gradient-to-r from-red-600 via-cyan-400 to-red-600 rounded-[32px] blur-lg opacity-50 group-hover:opacity-90 transition duration-1000 animate-pulse"></div>
+                        <div className="relative w-28 h-28 md:w-32 md:h-32 bg-black border border-white/10 rounded-[28px] overflow-hidden flex items-center justify-center p-2 shadow-2xl">
+                            <img 
+                                src={branding.logoUrl || '/assets/aistudio/1759185151992_02f8a860.jpg'} 
+                                alt="Kinetix Functional Zone" 
+                                className="w-full h-full object-contain" 
+                            />
+                        </div>
                     </div>
                     
-                    <div className="text-center">
+                    <div className="text-center space-y-1">
                         {isLeslie ? (
-                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-600/20 border border-red-500/50 rounded-full mb-2 animate-pulse">
+                            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-red-600/20 border border-red-500/50 rounded-full mb-1 animate-pulse">
                                 <span className="text-xs">👑</span>
                                 <span className="text-[9px] font-black uppercase tracking-widest text-red-400">Dueña & Coach Leslie</span>
                             </div>
                         ) : isJorge ? (
-                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-600/20 border border-red-500/50 rounded-full mb-2 animate-pulse">
+                            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-cyan-600/20 border border-cyan-500/50 rounded-full mb-1 animate-pulse">
                                 <span className="text-xs">👑</span>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-red-400">Dueño & Head Coach Jorge</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-cyan-300">Dueño & Head Coach Jorge</span>
                             </div>
                         ) : isAdminMode ? (
-                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-600/20 border border-red-500/50 rounded-full mb-2">
+                            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-red-600/20 border border-red-500/50 rounded-full mb-1">
                                 <span className="text-xs">🛡️</span>
                                 <span className="text-[9px] font-black uppercase tracking-widest text-red-400">Mando Central de Coach</span>
                             </div>
                         ) : null}
 
-                        <h1 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter leading-none mb-1">
-                            KINETIX<br/>
-                            <span className={isAdminMode ? 'text-red-600' : 'text-white/40'}>
-                                {isAdminMode ? 'COACH COMMAND' : 'ELITE OS'}
-                            </span>
+                        <h1 className="text-3xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">
+                            <span className="text-[#FF2A2A] drop-shadow-[0_0_20px_rgba(255,42,42,0.5)]">KINETIX</span><br/>
+                            <span className="text-[#00F0FF] text-lg md:text-2xl tracking-[0.22em] font-black drop-shadow-[0_0_15px_rgba(0,240,255,0.5)]">FUNCTIONAL ZONE</span>
                         </h1>
-                        <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.4em] text-white/30 mt-1">
-                            {isAdminMode ? 'Control Total: Mando • Atletas • Protocolos • Búnker' : 'Acceso por Email & Clave Asignada'}
+                        <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.35em] text-white/40 pt-1">
+                            {isAdminMode ? 'Centro de Mando • Leslie & Jorge' : 'Ecosistema de Alto Rendimiento & Atletas'}
                         </p>
+                        
+                        <div className="pt-2">
+                            <a 
+                                href="https://kinetix-progress.vercel.app/" 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400 text-[8px] font-black uppercase tracking-widest transition-all"
+                            >
+                                <span>💳</span> Portal Control de Pagos ↗
+                            </a>
+                        </div>
                     </div>
                 </div>
 

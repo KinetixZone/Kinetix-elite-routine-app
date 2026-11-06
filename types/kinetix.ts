@@ -195,7 +195,7 @@ export interface Workout {
   id: string; 
   name: string; 
   publicTitle?: string; 
-  category?: 'general' | 'travel'; 
+  category?: 'general' | 'travel' | 'personalizado'; 
   day: number; 
   exercises: WorkoutExercise[];
   isCompleted?: boolean; 

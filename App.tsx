@@ -152,27 +152,42 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#050507] text-white pb-32">
         {/* Barra Superior de Identidad de Coach / Dueño */}
-        <header className="sticky top-0 z-[400] bg-[#050507]/90 backdrop-blur-xl border-b border-white/5 px-4 md:px-8 py-3.5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 font-black italic">
-                    K
+        <header className="sticky top-0 z-[400] bg-[#050507]/95 backdrop-blur-xl border-b border-white/5 px-4 md:px-8 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3.5">
+                <div className="relative w-10 h-10 rounded-2xl bg-black border border-cyan-500/40 p-0.5 overflow-hidden shadow-[0_0_15px_rgba(0,240,255,0.25)] flex items-center justify-center shrink-0">
+                    <img 
+                        src="/assets/aistudio/1759185151992_02f8a860.jpg" 
+                        alt="Kinetix Logo" 
+                        className="w-full h-full object-cover rounded-xl"
+                    />
                 </div>
                 <div>
                     <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black uppercase text-white/90 tracking-wider">
-                            {user.name}
+                        <span className="text-[10px] md:text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
+                            {user.name.toLowerCase().includes('leslie') ? '👑 Leslie' : user.name.toLowerCase().includes('jorge') ? '👑 Jorge González' : user.name}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/30">
-                            {user.role === 'owner' ? 'DUEÑO / COACH' : 'COACH'}
+                        <span className="px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/40">
+                            {user.name.toLowerCase().includes('jorge') ? 'HEAD COACH & DUEÑO' : user.name.toLowerCase().includes('leslie') ? 'DUEÑA & COACH' : 'COACH'}
                         </span>
                     </div>
-                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">
-                        {user.email} • Modo Operativo Central
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="text-cyan-400 font-black">Kinetix Functional Zone</span> • Mando Central
                     </p>
                 </div>
             </div>
 
             <div className="flex items-center gap-2">
+                {/* Enlace Oficial a Control de Pagos Kinetix Progress */}
+                <a 
+                    href="https://kinetix-progress.vercel.app/" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
+                    title="Abrir App de Pagos & Progreso"
+                >
+                    <span>💳</span> <span className="hidden sm:inline">Control de </span>Pagos ↗
+                </a>
+
                 <button 
                     onClick={() => setView('crm')} 
                     className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"

@@ -31,15 +31,27 @@ const AthleteFormModal: React.FC<{
         medicalConditions: ''
     });
 
+    const [formError, setFormError] = useState<string | null>(null);
+
     const generateRandomPassword = () => {
         const rand = Math.floor(1000 + Math.random() * 9000);
         setFormData({ ...formData, password: `kinetix.${rand}` });
     };
 
     const handleSubmit = () => {
-        if (!formData.name.trim()) return alert("El Nombre es obligatorio.");
-        if (!formData.email.trim() || !formData.email.includes('@')) return alert("El Email es obligatorio y debe ser válido.");
-        if (!formData.password?.trim()) return alert("Debes asignar una Clave de Acceso para el atleta.");
+        if (!formData.name.trim()) {
+            setFormError("El Nombre es obligatorio.");
+            return;
+        }
+        if (!formData.email.trim() || !formData.email.includes('@')) {
+            setFormError("El Email es obligatorio y debe ser válido.");
+            return;
+        }
+        if (!formData.password?.trim()) {
+            setFormError("Debes asignar una Clave de Acceso para el atleta.");
+            return;
+        }
+        setFormError(null);
         onSave(formData);
     };
 
@@ -57,6 +69,12 @@ const AthleteFormModal: React.FC<{
                     </div>
                     <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center text-white transition-colors">✕</button>
                 </div>
+
+                {formError && (
+                    <div className="mb-6 p-4 bg-red-950/60 border border-red-600/60 rounded-2xl animate-in shake">
+                        <p className="text-xs font-black text-red-300 uppercase text-center tracking-wider">{formError}</p>
+                    </div>
+                )}
 
                 <div className="space-y-6">
                     {/* CREDENCIALES DE ACCESO */}
@@ -292,12 +310,13 @@ interface Props {
 export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'expiring' | 'suspended'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vacaciones' | 'expiring' | 'suspended'>('all');
   const [tab, setTab] = useState<'profile' | 'calendar' | 'history'>('profile'); 
   const [editingInstance, setEditingInstance] = useState<Workout | null>(null);
   const [clickedEvent, setClickedEvent] = useState<CalendarEvent | null>(null);
   const [calendarTrigger, setCalendarTrigger] = useState(0); 
   const [copiedKey, setCopiedKey] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   
   // Asignación & Propagación
   const [assigningDate, setAssigningDate] = useState<string | null>(null);
@@ -369,6 +388,12 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
           if (filter === 'all') return true;
           if (filter === 'active') return a.isActive;
           if (filter === 'suspended') return !a.isActive;
+          if (filter === 'personalizados') {
+              return a.name.toLowerCase().includes('personalizad') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('personalizad'));
+          }
+          if (filter === 'vacaciones') {
+              return a.name.toLowerCase().includes('vacaciones') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('vacaciones'));
+          }
           if (filter === 'expiring') {
               if (!a.cycleEndDate) return false;
               const diff = (new Date(a.cycleEndDate).getTime() - Date.now()) / (1000 * 3600 * 24);
@@ -440,13 +465,13 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
 
     setCalendarTrigger(prev => prev + 1);
     setShowPropagateModal(false);
-    alert(`✅ Rutina propagada a las próximas ${propagateWeeks} semanas con éxito.`);
+    setToastMsg(`Rutina propagada a las próximas ${propagateWeeks} semanas con éxito.`);
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   const handleSaveAsMasterTemplate = async () => {
     if (!editingInstance) return;
-    const name = prompt("Nombre de la nueva plantilla maestra:", editingInstance.name);
-    if (!name) return;
+    const name = editingInstance.name.includes('(Master)') ? editingInstance.name : `${editingInstance.name} (Master)`;
 
     const master: Workout = {
       ...editingInstance,
@@ -459,7 +484,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
 
     await storageService.saveTemplate(master);
     await loadTemplates();
-    alert(`✅ Plantilla "${name}" guardada en la biblioteca de rutinas.`);
+    setToastMsg(`Plantilla "${name}" guardada en la biblioteca maestra.`);
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   const allExercises = useMemo(() => storageService.getExercises(), []);
@@ -467,15 +493,44 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
   return (
     <div className="pt-20 pb-32 px-4 md:px-8 max-w-7xl mx-auto flex flex-col md:flex-row gap-8">
       {/* SIDEBAR DE ATLETAS */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter">Atletas</h1>
-          <button onClick={() => { setAthleteToEdit(null); setShowFormModal(true); }} className="w-12 h-12 rounded-full bg-red-600 hover:bg-red-500 text-white text-2xl font-black shadow-lg transition-all" title="Crear Nuevo Atleta">+</button>
+          <div>
+            <p className="text-[9px] font-black uppercase text-cyan-400 tracking-[0.3em]">Gestión de Alumnos</p>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter">Atletas</h1>
+          </div>
+          <button onClick={() => { setAthleteToEdit(null); setShowFormModal(true); }} className="w-12 h-12 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-2xl font-black shadow-lg transition-all" title="Crear Nuevo Atleta">+</button>
         </div>
-        <div className="flex bg-white/5 rounded-full p-1 gap-1 overflow-x-auto no-scrollbar">
-             {['all','active','expiring','suspended'].map(f => <button key={f} onClick={() => setFilter(f as any)} className={`px-4 py-2 rounded-full text-[9px] font-black uppercase whitespace-nowrap ${filter === f ? 'bg-white text-black' : 'text-white/40'}`}>{f}</button>)}
+
+        {/* ENLACE OFICIAL A CONTROL DE PAGOS */}
+        <a 
+           href="https://kinetix-progress.vercel.app/" 
+           target="_blank" 
+           rel="noopener noreferrer" 
+           className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-cyan-950/30 hover:bg-cyan-900/50 border border-cyan-500/30 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all group"
+        >
+           <span className="flex items-center gap-2"><span>💳</span> Control de Pagos Kinetix</span>
+           <span className="text-[8px] text-cyan-400/60 group-hover:text-cyan-300">Abrir ↗</span>
+        </a>
+
+        <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
+             {[
+               { id: 'all', label: 'Todos' },
+               { id: 'personalizados', label: '⭐ Jorge 1-on-1' },
+               { id: 'vacaciones', label: '🏖️ Vacaciones' },
+               { id: 'active', label: 'Activos' },
+               { id: 'expiring', label: 'Por Vencer' }
+             ].map(f => (
+               <button 
+                 key={f.id} 
+                 onClick={() => setFilter(f.id as any)} 
+                 className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase whitespace-nowrap transition-all ${filter === f.id ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+               >
+                 {f.label}
+               </button>
+             ))}
         </div>
-        <div className="space-y-3 overflow-y-auto custom-scrollbar h-[calc(100vh-250px)]">
+        <div className="space-y-3 overflow-y-auto custom-scrollbar h-[calc(100vh-290px)]">
           {filteredAthletes.map(athlete => (
              <div key={athlete.id} onClick={() => setSelectedAthlete(athlete)} className={`p-5 rounded-[24px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
                 <div className="flex justify-between items-start">
@@ -485,7 +540,14 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                     </span>
                 </div>
                 <p className="text-[10px] opacity-50 font-bold uppercase">{athlete.email}</p>
-                <p className="text-[8px] font-mono mt-1 text-red-600/70">Clave: {athlete.password || 'kinetix.atleta'}</p>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                   <span className="text-[8px] font-mono text-red-600/70">Clave: {athlete.password || 'kinetix.atleta'}</span>
+                   {athlete.medicalConditions && (
+                     <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/80 bg-cyan-950/40 px-2 py-0.5 rounded-md">
+                       {athlete.medicalConditions}
+                     </span>
+                   )}
+                </div>
              </div>
           ))}
           {filteredAthletes.length === 0 && (
@@ -499,6 +561,14 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
         <div className="flex-[2] bg-[#0F0F11] border border-white/5 rounded-[40px] p-6 md:p-10 flex flex-col h-[calc(100vh-140px)] overflow-hidden shadow-2xl relative animate-in slide-in-from-right-10">
            <button onClick={() => setSelectedAthlete(null)} className="md:hidden absolute top-6 right-6 text-white/40">✕</button>
            
+           {/* TOAST NOTIFICATION BANNER */}
+           {toastMsg && (
+             <div className="mb-4 p-3 bg-cyan-950/90 border border-cyan-500/60 rounded-2xl animate-in fade-in flex items-center justify-between shadow-[0_0_20px_rgba(0,240,255,0.2)]">
+                <span className="text-xs font-black text-cyan-200 uppercase tracking-wider">✓ {toastMsg}</span>
+                <button onClick={() => setToastMsg(null)} className="text-cyan-400 hover:text-white text-xs font-bold">✕</button>
+             </div>
+           )}
+
            {/* HEADER COCKPIT */}
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-6 border-b border-white/5">
               <div className="flex gap-4 items-center">
@@ -511,12 +581,39 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button 
+                  onClick={async () => {
+                    const travelTemplate = templates.find(t => t.category === 'travel') || templates[0];
+                    if (travelTemplate) {
+                      const today = new Date().toISOString().split('T')[0];
+                      calendarService.saveEvent({
+                        id: `evt-travel-${Date.now()}`,
+                        type: 'workout',
+                        title: `🏖️ ${travelTemplate.name}`,
+                        start: `${today}T10:00:00`,
+                        end: `${today}T11:00:00`,
+                        allDay: true,
+                        coachId: 'jorge',
+                        athleteIds: [selectedAthlete.id],
+                        workoutTemplateId: travelTemplate.id,
+                        location: 'Remoto / Vacaciones'
+                      });
+                      setCalendarTrigger(prev => prev + 1);
+                      setToastMsg(`Rutina de Vacaciones asignada a ${selectedAthlete.name.split(' ')[0]}`);
+                      setTimeout(() => setToastMsg(null), 3500);
+                    }
+                  }}
+                  className="bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 px-3.5 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all"
+                  title="Asignar protocolo para hotel o sin equipo"
+                >
+                  🏖️ Asignar Vacaciones
+                </button>
                 <button 
                   onClick={handleCopyAccess} 
                   className="bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all"
                 >
-                  {copiedKey ? '✓ ¡Credenciales Copiadas!' : '📋 Copiar Acceso Atleta'}
+                  {copiedKey ? '✓ ¡Copiado!' : '📋 Copiar Acceso'}
                 </button>
                 <button 
                   onClick={() => { setAthleteToEdit(selectedAthlete); setShowFormModal(true); }}

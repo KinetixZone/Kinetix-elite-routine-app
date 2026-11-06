@@ -15,6 +15,7 @@ export const WorkoutManager: React.FC = () => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
   const [exerciseCount, setExerciseCount] = useState<number>(0);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'general' | 'travel' | 'personalizado'>('all');
   const [projConfig, setProjConfig] = useState({ 
     startDate: new Date().toISOString().split('T')[0], 
     weeks: 4, 
@@ -143,19 +144,60 @@ export const WorkoutManager: React.FC = () => {
        </div>
 
        {view === 'list' && (
-         <div className="space-y-4">
-            {templates.map(tpl => (
-                <div key={tpl.id} className="group grid grid-cols-12 gap-4 items-center bg-[#0F0F11] border border-white/5 hover:border-white/20 p-6 rounded-3xl transition-all">
-                    <div className="col-span-6 md:col-span-5">
-                        <h3 className="text-xl font-black uppercase italic tracking-tight text-white">{tpl.name}</h3>
-                    </div>
-                    <div className="col-span-6 md:col-span-7 flex justify-end gap-3">
-                        <button onClick={() => {setEditingTemplate({...tpl}); setView('editor');}} className="w-12 h-12 rounded-2xl bg-white/5 hover:bg-white hover:text-black flex items-center justify-center text-sm border border-white/5 transition-all">✎</button>
-                        <button onClick={() => {setAssignTarget(tpl); setView('meso');}} className="px-5 h-12 rounded-2xl bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white flex items-center justify-center text-[10px] font-black uppercase tracking-widest border border-blue-600/20 transition-all">🏗 MESO</button>
-                        <button onClick={() => {setAssignTarget(tpl); setView('assign');}} className="w-12 h-12 rounded-2xl bg-green-600/10 hover:bg-green-600 text-green-500 hover:text-white flex items-center justify-center text-sm border border-green-600/20 transition-all">📅</button>
-                    </div>
-                </div>
-            ))}
+         <div className="space-y-6">
+            <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
+               {[
+                 { id: 'all', label: 'Todas las Rutinas' },
+                 { id: 'travel', label: '🏖️ Vacaciones / Viaje' },
+                 { id: 'personalizado', label: '⭐ Personalizados Jorge' },
+                 { id: 'general', label: 'Pesas & Funcional' }
+               ].map(cat => (
+                 <button 
+                   key={cat.id} 
+                   onClick={() => setCategoryFilter(cat.id as any)}
+                   className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap transition-all ${categoryFilter === cat.id ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                 >
+                   {cat.label}
+                 </button>
+               ))}
+            </div>
+
+            <div className="space-y-4">
+               {templates
+                 .filter(tpl => {
+                   if (categoryFilter === 'all') return true;
+                   if (categoryFilter === 'travel') return tpl.category === 'travel' || tpl.name.toLowerCase().includes('viaje') || tpl.name.toLowerCase().includes('vacaciones');
+                   if (categoryFilter === 'personalizado') return tpl.category === 'personalizado' || tpl.name.toLowerCase().includes('personalizado');
+                   return tpl.category === categoryFilter;
+                 })
+                 .map(tpl => (
+                   <div key={tpl.id} className="group grid grid-cols-12 gap-4 items-center bg-[#0F0F11] border border-white/5 hover:border-white/20 p-6 rounded-3xl transition-all">
+                       <div className="col-span-6 md:col-span-5 space-y-1">
+                           <div className="flex items-center gap-2">
+                              {tpl.category === 'travel' ? (
+                                <span className="text-[7px] font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-md">
+                                  🏖️ Modo Vacaciones
+                                </span>
+                              ) : tpl.category === 'personalizado' ? (
+                                <span className="text-[7px] font-black uppercase tracking-wider text-amber-300 bg-amber-950/60 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                                  ⭐ Jorge 1-on-1
+                                </span>
+                              ) : (
+                                <span className="text-[7px] font-black uppercase tracking-wider text-white/40 bg-white/5 px-2 py-0.5 rounded-md">
+                                  Kinetix Master
+                                </span>
+                              )}
+                           </div>
+                           <h3 className="text-xl font-black uppercase italic tracking-tight text-white">{tpl.name}</h3>
+                       </div>
+                       <div className="col-span-6 md:col-span-7 flex justify-end gap-3">
+                           <button onClick={() => {setEditingTemplate({...tpl}); setView('editor');}} className="w-12 h-12 rounded-2xl bg-white/5 hover:bg-white hover:text-black flex items-center justify-center text-sm border border-white/5 transition-all" title="Editar">✎</button>
+                           <button onClick={() => {setAssignTarget(tpl); setView('meso');}} className="px-5 h-12 rounded-2xl bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white flex items-center justify-center text-[10px] font-black uppercase tracking-widest border border-blue-600/20 transition-all">🏗 MESO</button>
+                           <button onClick={() => {setAssignTarget(tpl); setView('assign');}} className="w-12 h-12 rounded-2xl bg-green-600/10 hover:bg-green-600 text-green-500 hover:text-white flex items-center justify-center text-sm border border-green-600/20 transition-all" title="Asignar a Atletas">📅</button>
+                       </div>
+                   </div>
+               ))}
+            </div>
          </div>
        )}
 

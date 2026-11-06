@@ -34,6 +34,9 @@ export interface AiBlueprint {
 export interface BrandingConfig {
     logoUrl?: string;
     primaryColor?: string;
+    secondaryColor?: string;
+    brandName?: string;
+    payPortalUrl?: string;
 }
 
 export interface MuscleStatus {
@@ -69,11 +72,12 @@ const DEFAULT_ATHLETES: User[] = [
     isActive: true,
     cycleEndDate: new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0],
     age: 27,
-    weight: 78
+    weight: 78,
+    medicalConditions: 'Kinetix Presencial'
   },
   {
     id: 'ath-2',
-    name: 'Ana García',
+    name: 'Ana García (Personalizada Jorge)',
     email: 'ana@kinetix.com',
     password: 'kinetix.atleta',
     role: 'client',
@@ -86,16 +90,49 @@ const DEFAULT_ATHLETES: User[] = [
     isActive: true,
     cycleEndDate: new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0],
     age: 24,
-    weight: 62
+    weight: 62,
+    medicalConditions: 'Personalizado Jorge Gonzalez'
+  },
+  {
+    id: 'ath-3',
+    name: 'Diego Morales (Modo Vacaciones / Hotel)',
+    email: 'diego@kinetix.com',
+    password: 'kinetix.atleta',
+    role: 'client',
+    goal: Goal.PERFORMANCE,
+    level: UserLevel.INTERMEDIATE,
+    daysPerWeek: 3,
+    equipment: ['Hotel Gym', 'Mancuernas'],
+    streak: 5,
+    createdAt: new Date(Date.now() - 40 * 86400000).toISOString(),
+    isActive: true,
+    cycleEndDate: new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0],
+    age: 31,
+    weight: 81,
+    medicalConditions: 'Remoto / Vacaciones'
   }
 ];
 
 class StorageService {
   getBranding(): BrandingConfig {
+      const defaultBranding: BrandingConfig = {
+          logoUrl: '/assets/aistudio/1759185151992_02f8a860.jpg',
+          primaryColor: '#FF2A2A',
+          secondaryColor: '#00F0FF',
+          brandName: 'KINETIX FUNCTIONAL ZONE',
+          payPortalUrl: 'https://kinetix-progress.vercel.app/'
+      };
       try {
           const data = localStorage.getItem(KEYS.BRANDING);
-          return data ? JSON.parse(data) : { primaryColor: '#ef4444' };
-      } catch (e) { return { primaryColor: '#ef4444' }; }
+          if (!data) return defaultBranding;
+          const parsed = JSON.parse(data);
+          return {
+              ...defaultBranding,
+              ...parsed,
+              logoUrl: parsed.logoUrl || defaultBranding.logoUrl,
+              payPortalUrl: defaultBranding.payPortalUrl
+          };
+      } catch (e) { return defaultBranding; }
   }
 
   saveBranding(config: BrandingConfig) {

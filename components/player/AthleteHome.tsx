@@ -208,16 +208,31 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
          {activeTab === 'train' && (
              <div className="space-y-8 animate-in slide-in-from-left-4">
                  <div className="flex justify-between items-start pb-6 border-b border-white/5">
-                     <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                           <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-ping" />
-                           <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.4em]">Unit Status: Active</p>
+                     <div className="flex items-center gap-4">
+                        <div className="relative w-14 h-14 rounded-2xl bg-black border border-cyan-500/40 p-1 overflow-hidden shadow-[0_0_20px_rgba(0,240,255,0.3)] shrink-0">
+                           <img 
+                               src="/assets/aistudio/1759185151992_02f8a860.jpg" 
+                               alt="Kinetix Functional Zone" 
+                               className="w-full h-full object-cover rounded-xl"
+                           />
                         </div>
-                        <h1 className="text-4xl font-black uppercase italic tracking-tighter">HOLA, {user.name.split(' ')[0]}</h1>
+                        <div className="space-y-0.5">
+                           <div className="flex items-center gap-2">
+                              <p className="text-[8px] font-black uppercase tracking-[0.25em] text-[#FF2A2A]">
+                                 Kinetix <span className="text-[#00F0FF]">Functional Zone</span>
+                              </p>
+                           </div>
+                           <h1 className="text-3xl font-black uppercase italic tracking-tighter leading-none text-white">
+                              HOLA, {user.name.split(' ')[0]}
+                           </h1>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">
+                              {user.medicalConditions?.includes('Personalizado') ? '⭐ Programa Jorge González' : user.medicalConditions?.includes('Vacaciones') ? '🏖️ Modo Vacaciones Activo' : 'Atleta Oficial Kinetix'}
+                           </p>
+                        </div>
                      </div>
-                     <div className="bg-[#121215] p-3 rounded-2xl border border-white/10 flex flex-col items-center">
+                     <div className="bg-[#121215] p-3 rounded-2xl border border-white/10 flex flex-col items-center shrink-0">
                          <p className="text-[7px] font-black text-white/30 uppercase tracking-widest mb-1">Readiness</p>
-                         <p className="text-xl font-black text-white italic">{systemReadiness}%</p>
+                         <p className="text-xl font-black text-cyan-400 italic">{systemReadiness}%</p>
                      </div>
                  </div>
 
