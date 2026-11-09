@@ -72,6 +72,7 @@ export interface User {
   weight?: number;
   medicalConditions?: string;
   prHistory?: PRRecord[];
+  preferredUnit?: 'kg' | 'lbs';
 }
 
 export interface CalendarEvent {

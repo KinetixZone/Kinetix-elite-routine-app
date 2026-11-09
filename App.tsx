@@ -9,6 +9,7 @@ import { ExerciseLibrary } from './components/admin/ExerciseLibrary';
 import { WorkoutManager } from './components/coach/WorkoutManager';
 import { AdminDashboard } from './components/admin/AdminDashboard'; 
 import { AuthScreen } from './components/auth/AuthScreen';
+import { UnitConverterModal } from './components/ui/UnitConverterModal';
 import { calendarService } from './services/calendarService';
 import { storageService } from './services/storageService';
 
@@ -42,6 +43,7 @@ const App: React.FC = () => {
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(EMPTY_WORKOUT);
   const [availableTemplates, setAvailableTemplates] = useState<Workout[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
+  const [showUnitConverter, setShowUnitConverter] = useState(false);
 
   useEffect(() => {
     const initApp = () => {
@@ -176,17 +178,37 @@ const App: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex items-center gap-2">
-                {/* Enlace Oficial a Control de Pagos Kinetix Progress */}
+            <div className="flex items-center gap-2 flex-wrap">
+                {/* Enlace a App de Control de Pagos */}
+                <a 
+                    href="https://kinetix-control.vercel.app/" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
+                    title="Control de Pagos & Membresías (kinetix-control.vercel.app)"
+                >
+                    <span>💳</span> <span className="hidden sm:inline">App </span>Pagos ↗
+                </a>
+
+                {/* Enlace a App de Cargas, RM & Peso */}
                 <a 
                     href="https://kinetix-progress.vercel.app/" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
-                    title="Abrir App de Pagos & Progreso"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-red-500/30 transition-all"
+                    title="Seguimiento de Cargas & RM (kinetix-progress.vercel.app)"
                 >
-                    <span>💳</span> <span className="hidden sm:inline">Control de </span>Pagos ↗
+                    <span>📈</span> <span className="hidden sm:inline">Cargas & </span>RM ↗
                 </a>
+
+                {/* Calculadora de Unidades KG ⇄ LBS */}
+                <button 
+                    onClick={() => setShowUnitConverter(true)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white text-white hover:text-black text-[8px] font-black uppercase tracking-wider border border-white/20 transition-all"
+                    title="Convertir Kilogramos y Libras"
+                >
+                    <span>⚖️</span> KG ⇄ LBS
+                </button>
 
                 <button 
                     onClick={() => setView('crm')} 
@@ -198,14 +220,14 @@ const App: React.FC = () => {
                     onClick={() => setView('manager')} 
                     className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
                 >
-                    <span>📐</span> Protocolo
+                    <span>📐</span> Rutinas
                 </button>
                 {(user.role === 'admin' || user.role === 'owner') && (
                     <button 
                         onClick={() => setView('admin_dashboard')} 
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-red-500/40 transition-all"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-blue-500/40 transition-all"
                     >
-                        <span>🔐</span> Búnker
+                        <span>⚙️</span> Sistema
                     </button>
                 )}
                 <button 
@@ -221,7 +243,7 @@ const App: React.FC = () => {
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/10 px-6 md:px-10 py-5 rounded-[35px] flex gap-8 md:gap-14 z-[500] shadow-[0_30px_70px_rgba(0,0,0,0.8)]">
             <button onClick={() => setView('home')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">📊</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Mando</span>
+                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Dashboard</span>
             </button>
             <button onClick={() => setView('crm')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'crm' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">👥</span>
@@ -229,12 +251,12 @@ const App: React.FC = () => {
             </button>
             <button onClick={() => setView('manager')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'manager' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">📐</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Protocolo</span>
+                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Rutinas</span>
             </button>
             {(user.role === 'admin' || user.role === 'owner') && (
                 <button onClick={() => setView('admin_dashboard')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                    <span className="text-xl">🔐</span>
-                    <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Búnker</span>
+                    <span className="text-xl">⚙️</span>
+                    <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Sistema</span>
                 </button>
             )}
             <button onClick={handleLogout} className="flex flex-col items-center gap-1 text-red-900 border-l border-white/10 pl-6 md:pl-8 group">
@@ -251,6 +273,9 @@ const App: React.FC = () => {
             {view === 'manager' && <WorkoutManager />}
             {view === 'admin_dashboard' && <AdminDashboard currentUser={user} onNavigate={setView} />}
         </main>
+
+        {/* Modal Convertidor de Unidades KG ⇄ LBS */}
+        <UnitConverterModal isOpen={showUnitConverter} onClose={() => setShowUnitConverter(false)} />
     </div>
   );
 };

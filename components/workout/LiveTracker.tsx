@@ -5,6 +5,8 @@ import { storageService } from '../../services/storageService';
 import { aiService } from '../../services/aiService';
 import { EXERCISES_DB } from '../../constants/exercises';
 import { getYoutubeEmbedUrl } from '../../lib/youtube';
+import { UnitConverterModal } from '../ui/UnitConverterModal';
+import { getWeightEquivalenceHint, WeightUnit } from '../../lib/units';
 
 interface Props {
   workout: Workout;
@@ -162,6 +164,12 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
   const [feedback, setFeedback] = useState<SessionFeedback>({ rpe: 7, fatigue: 3, notes: '' });
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [showConverter, setShowConverter] = useState(false);
+
+  // TONELAJE TOTAL COMPUTADO EN TIEMPO REAL
+  const currentTonnage = useMemo(() => {
+    return progress.workoutLogs.reduce((acc, l) => acc + (Number(l.weight || 0) * Number(l.reps || 0)), 0);
+  }, [progress.workoutLogs]);
 
   // REST TIMER STATE
   const [restTimer, setRestTimer] = useState<{
@@ -425,24 +433,50 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
     <div className="min-h-screen bg-[#050507] text-white pb-36">
       
       {/* TOP BAR / HUD */}
-      <div className="sticky top-0 z-50 bg-[#050507]/90 backdrop-blur-xl p-5 border-b border-white/5 flex justify-between items-center px-6 md:px-8">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-            <h1 className="text-[10px] font-black uppercase text-red-500 tracking-[0.3em] truncate max-w-[200px]">
-              {workout.publicTitle || workout.name}
-            </h1>
+      <div className="sticky top-0 z-50 bg-[#050507]/90 backdrop-blur-xl p-4 border-b border-white/5 flex justify-between items-center px-4 md:px-8 gap-3">
+        <div className="flex items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
+              <h1 className="text-[10px] font-black uppercase text-red-500 tracking-[0.3em] truncate max-w-[150px] md:max-w-[220px]">
+                {workout.publicTitle || workout.name}
+              </h1>
+            </div>
+            <p className="text-2xl font-black italic tracking-tighter leading-none mt-0.5">
+              {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
+            </p>
           </div>
-          <p className="text-2xl font-black italic tracking-tighter">
-            {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
-          </p>
+
+          {/* TONELAJE EN TIEMPO REAL */}
+          {currentTonnage > 0 && (
+            <div className="hidden sm:flex flex-col bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-center shrink-0">
+              <span className="text-[7px] font-black uppercase tracking-widest text-cyan-400">Tonelaje</span>
+              <span className="text-xs font-black text-white italic">
+                {currentTonnage.toLocaleString()} <span className="text-[8px] text-white/40 not-italic">KG</span>
+              </span>
+            </div>
+          )}
         </div>
-        <button 
-          onClick={handleCompleteRequest} 
-          className="px-6 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all"
-        >
-          Finalizar
-        </button>
+
+        <div className="flex items-center gap-2">
+          {/* BOTÓN CONVERSOR KG ⇄ LBS */}
+          <button 
+            type="button"
+            onClick={() => setShowConverter(true)} 
+            className="px-3 py-2.5 bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all flex items-center gap-1.5"
+            title="Abrir Conversor de Cargas KG ⇄ LBS"
+          >
+            <span>⚖️</span>
+            <span className="hidden sm:inline">KG ⇄ LBS</span>
+          </button>
+
+          <button 
+            onClick={handleCompleteRequest} 
+            className="px-5 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all shrink-0"
+          >
+            Finalizar
+          </button>
+        </div>
       </div>
 
       {/* EXERCISES LIST */}
@@ -618,7 +652,17 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
                           
                           <div className="flex-1 flex gap-2">
                             <div className="relative flex-1">
-                              <span className="absolute -top-3 left-0 text-[6px] text-white/30 uppercase font-black">KG</span>
+                              <div className="flex justify-between items-center -top-3 left-0 absolute right-0">
+                                <span className="text-[6px] text-white/30 uppercase font-black">KG</span>
+                                {(() => {
+                                  const currentVal = progress.performanceData[row.exerciseId]?.weights[row.globalIndex] ?? (ghost ? ghost.weight : parseWeightValue(row.targetWeight));
+                                  return currentVal > 0 ? (
+                                    <span className="text-[6px] text-cyan-400 font-mono font-bold">
+                                      {getWeightEquivalenceHint(currentVal, 'kg')}
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </div>
                               <input 
                                 type="number" 
                                 placeholder={ghost ? `${ghost.weight}` : row.targetWeight} 

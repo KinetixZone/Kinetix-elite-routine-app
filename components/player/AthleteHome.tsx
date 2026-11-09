@@ -144,13 +144,28 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
 
   const muscleStatus = useMemo(() => storageService.getMuscleStatus(), [activeTab]);
 
-  const completionStatus = useMemo(() => {
-      if (isWorkoutEmpty) return { isDone: false, label: '' };
-      if (storageService.isSessionComplete(currentWorkout.id)) return { isDone: true, label: 'MISIÓN CUMPLIDA' };
+  const todaySummary = useMemo(() => {
       const todayStr = new Date().toISOString().split('T')[0];
-      const hasLogsToday = storageService.getAllLogs().some(l => l.timestamp.startsWith(todayStr));
-      return { isDone: hasLogsToday, label: hasLogsToday ? 'OPERACIÓN FINALIZADA' : '' };
-  }, [currentWorkout, isWorkoutEmpty]);
+      const todayLogs = storageService.getAllLogs().filter(l => l.timestamp && l.timestamp.startsWith(todayStr));
+      const totalTonnage = todayLogs.reduce((acc, l) => acc + (Number(l.weight || 0) * Number(l.reps || 0)), 0);
+      const totalSets = todayLogs.length;
+      const workoutName = todayLogs[0]?.workoutName || currentWorkout?.name || 'Sesión de Hoy';
+      const rpe = todayLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
+      return {
+          hasLogs: todayLogs.length > 0,
+          tonnage: totalTonnage,
+          sets: totalSets,
+          workoutName,
+          rpe
+      };
+  }, [currentWorkout, activeTab]);
+
+  const completionStatus = useMemo(() => {
+      if (todaySummary.hasLogs) return { isDone: true, label: 'SESIÓN COMPLETADA' };
+      if (isWorkoutEmpty) return { isDone: false, label: '' };
+      if (storageService.isSessionComplete(currentWorkout.id)) return { isDone: true, label: 'SESIÓN COMPLETADA' };
+      return { isDone: false, label: '' };
+  }, [currentWorkout, isWorkoutEmpty, todaySummary.hasLogs]);
 
   const systemReadiness = useMemo(() => {
     const streakBonus = Math.min((user.streak || 0) * 2, 20);
@@ -269,55 +284,118 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
 
                  <div>
                      <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.4em] mb-4 flex items-center justify-between">
-                        <span>{completionStatus.isDone ? 'REPORTE FINALIZADO' : 'MISIÓN PRIORITARIA'}</span>
-                        <span className="text-white/10">v6.8</span>
+                        <span>{completionStatus.isDone ? 'SESIÓN FINALIZADA' : 'MISIÓN PRIORITARIA'}</span>
+                        <span className="text-white/10">KINETIX v6.8</span>
                      </p>
                      
                      {user.isActive ? (
-                         <div className={`group relative rounded-[48px] p-10 border transition-all duration-1000 overflow-hidden ${completionStatus.isDone ? 'bg-[#08080A] border-green-900/40' : isWorkoutEmpty ? 'bg-[#0F0F11] border-white/5' : 'bg-gradient-to-br from-[#121215] to-black border-white/10 shadow-2xl'}`}>
-                             {!completionStatus.isDone && !isWorkoutEmpty && (
-                                 <div className="absolute top-0 left-0 w-full h-[3px] bg-red-600 shadow-[0_0_15px_rgba(220,38,38,0.5)] animate-[scan_4s_linear_infinite]" />
-                             )}
-                             <div className="relative z-10">
-                                 <div className="flex justify-between items-start mb-8">
-                                     <div className={`px-4 py-1.5 rounded-full border text-[8px] font-black tracking-[0.3em] uppercase ${completionStatus.isDone ? 'bg-green-600/10 text-green-500 border-green-500/20' : isWorkoutEmpty ? 'bg-white/5 text-white/20 border-white/5' : 'bg-red-600 text-white border-red-500 shadow-lg animate-pulse'}`}>
-                                         {completionStatus.isDone ? 'LOGRADO' : isWorkoutEmpty ? 'DESCANSO' : 'DESPLEGAR AHORA'}
+                         completionStatus.isDone ? (
+                             /* TARJETA DE SESIÓN COMPLETADA (PROTECCIÓN INTELECTUAL Y DOSIFICACIÓN) */
+                             <div className="bg-[#0A0A0D] border border-green-500/30 rounded-[40px] p-8 space-y-6 shadow-[0_0_40px_rgba(34,197,94,0.12)] relative overflow-hidden">
+                                 <div className="flex justify-between items-center">
+                                     <div className="flex items-center gap-2">
+                                         <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]" />
+                                         <span className="text-[9px] font-black uppercase tracking-[0.25em] text-green-400">
+                                             Entrenamiento Cumplido
+                                         </span>
+                                     </div>
+                                     <span className="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded-full text-[8px] font-black uppercase">
+                                         ✓ Guardado
+                                     </span>
+                                 </div>
+
+                                 <div>
+                                     <p className="text-[9px] font-bold uppercase tracking-widest text-white/40">Sesión Realizada Hoy</p>
+                                     <h3 className="text-2xl font-black uppercase italic tracking-tight text-white mt-1">
+                                         {todaySummary.workoutName}
+                                     </h3>
+                                 </div>
+
+                                 <div className="grid grid-cols-3 gap-3">
+                                     <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                                         <p className="text-[8px] font-black uppercase text-white/40">Tonelaje</p>
+                                         <p className="text-lg font-black text-cyan-400 italic mt-0.5">
+                                             {todaySummary.tonnage > 0 ? todaySummary.tonnage.toLocaleString() : '—'}
+                                             <span className="text-[8px] text-white/40 block not-italic">KG</span>
+                                         </p>
+                                     </div>
+                                     <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                                         <p className="text-[8px] font-black uppercase text-white/40">Series</p>
+                                         <p className="text-lg font-black text-white italic mt-0.5">
+                                             {todaySummary.sets || '—'}
+                                             <span className="text-[8px] text-white/40 block not-italic">SETS</span>
+                                         </p>
+                                     </div>
+                                     <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                                         <p className="text-[8px] font-black uppercase text-white/40">Esfuerzo</p>
+                                         <p className="text-lg font-black text-red-500 italic mt-0.5">
+                                             {todaySummary.rpe ? `@${todaySummary.rpe}` : 'Óptimo'}
+                                             <span className="text-[8px] text-white/40 block not-italic">RPE</span>
+                                         </p>
                                      </div>
                                  </div>
-                                 <h2 className={`text-5xl font-black uppercase italic tracking-tighter leading-tight mb-8 ${completionStatus.isDone ? 'text-white/20' : 'text-white'}`}>
-                                     {isWorkoutEmpty ? 'RECARGA Y RECUPERA' : (currentWorkout.publicTitle || currentWorkout.name)}
-                                 </h2>
-                                 
-                                 {!completionStatus.isDone && !isWorkoutEmpty ? (
-                                     <button 
-                                         onClick={() => onStartSession(currentWorkout)}
-                                         className="w-full py-6 bg-white text-black hover:bg-red-600 hover:text-white rounded-[24px] font-black uppercase tracking-[0.4em] text-[10px] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
+
+                                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-start gap-3">
+                                     <span className="text-base shrink-0">🛡️</span>
+                                     <p className="text-[10px] text-white/60 leading-relaxed font-medium">
+                                         <strong className="text-white block font-black uppercase text-[9px] tracking-wider mb-0.5">
+                                             Dosificación Biomecánica & Recuperación:
+                                         </strong>
+                                         Tu rutina de hoy ha sido archivada para proteger tu sistema nervioso central. Tus cargas y tonelaje ya están computados en tu historial.
+                                     </p>
+                                 </div>
+
+                                 <div className="pt-1">
+                                     <a 
+                                         href="https://kinetix-progress.vercel.app/" 
+                                         target="_blank" 
+                                         rel="noreferrer"
+                                         className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/30 rounded-2xl text-[9px] font-black uppercase tracking-widest text-center text-white/80 hover:text-cyan-400 transition-all flex items-center justify-center gap-2"
                                      >
-                                         INICIAR SESIÓN ⚡
-                                     </button>
-                                 ) : isWorkoutEmpty && !completionStatus.isDone ? (
-                                     <div className="space-y-4">
-                                         <button onClick={() => setShowPlanB(!showPlanB)} className="w-full py-5 bg-white/5 hover:bg-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest border border-white/10">
-                                             {showPlanB ? 'CANCELAR' : 'CARGAR SESIÓN MANUAL'}
-                                         </button>
-                                         {showPlanB && (
-                                             <div className="space-y-2 animate-in slide-in-from-top-4">
-                                                 {availableWorkouts.map(w => (
-                                                     <button key={w.id} onClick={() => onStartSession(w)} className="w-full py-4 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
-                                                         {w.name}
-                                                     </button>
-                                                 ))}
-                                             </div>
-                                         )}
-                                     </div>
-                                 ) : (
-                                     <div className="bg-green-600/5 p-6 rounded-3xl border border-green-600/20 flex flex-col items-center gap-2">
-                                         <p className="text-[9px] font-black uppercase tracking-[0.3em] text-green-500">Misión Cumplida</p>
-                                         <p className="text-xs text-white/40 font-bold">Registro de rendimiento guardado.</p>
-                                     </div>
-                                 )}
+                                         <span>Ver RMs & Cargas en Kinetix Progress</span>
+                                         <span>↗</span>
+                                     </a>
+                                 </div>
                              </div>
-                         </div>
+                         ) : (
+                             /* TARJETA DE INICIO DE ENTRENAMIENTO (LIMPIA Y SIN LÍNEA ROJA PARÁSITA) */
+                             <div className={`group relative rounded-[48px] p-10 border transition-all duration-1000 overflow-hidden ${isWorkoutEmpty ? 'bg-[#0F0F11] border-white/5' : 'bg-gradient-to-br from-[#121215] to-black border-white/10 shadow-2xl'}`}>
+                                 <div className="relative z-10">
+                                     <div className="flex justify-between items-start mb-8">
+                                         <div className={`px-4 py-1.5 rounded-full border text-[8px] font-black tracking-[0.3em] uppercase ${isWorkoutEmpty ? 'bg-white/5 text-white/20 border-white/5' : 'bg-red-600 text-white border-red-500 shadow-lg animate-pulse'}`}>
+                                             {isWorkoutEmpty ? 'DESCANSO' : 'DESPLEGAR AHORA'}
+                                         </div>
+                                     </div>
+                                     <h2 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter leading-tight mb-8 text-white">
+                                         {isWorkoutEmpty ? 'RECARGA Y RECUPERA' : (currentWorkout.publicTitle || currentWorkout.name)}
+                                     </h2>
+                                     
+                                     {!isWorkoutEmpty ? (
+                                         <button 
+                                             onClick={() => onStartSession(currentWorkout)}
+                                             className="w-full py-6 bg-white text-black hover:bg-red-600 hover:text-white rounded-[24px] font-black uppercase tracking-[0.4em] text-[10px] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                                         >
+                                             INICIAR SESIÓN ⚡
+                                         </button>
+                                     ) : (
+                                         <div className="space-y-4">
+                                             <button onClick={() => setShowPlanB(!showPlanB)} className="w-full py-5 bg-white/5 hover:bg-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest border border-white/10">
+                                                 {showPlanB ? 'CANCELAR' : 'CARGAR SESIÓN MANUAL'}
+                                             </button>
+                                             {showPlanB && (
+                                                 <div className="space-y-2 animate-in slide-in-from-top-4">
+                                                     {availableWorkouts.map(w => (
+                                                         <button key={w.id} onClick={() => onStartSession(w)} className="w-full py-4 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
+                                                             {w.name}
+                                                         </button>
+                                                     ))}
+                                                 </div>
+                                             )}
+                                         </div>
+                                     )}
+                                 </div>
+                             </div>
+                         )
                      ) : (
                          <div className="bg-[#0F0F11] border border-red-600/30 rounded-[40px] p-12 text-center">
                              <h3 className="text-2xl font-black uppercase italic text-red-600 mb-4">Membresía Inactiva</h3>
@@ -351,6 +429,15 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
                         <span className="text-blue-500 font-black text-[9px] tracking-widest">CONNECT</span>
                      </button>
                  )}
+                  {/* MARCA DE AGUA Y PROTECCIÓN DE PROPIEDAD INTELECTUAL */}
+                  <div className="text-center pt-8 pb-4">
+                     <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-white/25">
+                        🔒 Propiedad Intelectual Kinetix Functional Zone
+                     </p>
+                     <p className="text-[7px] text-white/20 tracking-wider mt-0.5">
+                        Metodología Exclusiva Lic. Jorge González & Leslie • Asignado a {user.name}
+                     </p>
+                  </div>
              </div>
          )}
 
