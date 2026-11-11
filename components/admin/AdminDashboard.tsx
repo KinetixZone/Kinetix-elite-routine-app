@@ -205,7 +205,7 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
             </div>
             
             <button onClick={() => onNavigate('home')} className="w-full md:w-auto px-8 py-4 bg-white/5 hover:bg-red-600 hover:text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 active:scale-95">
-                Cerrar Protocolos
+                Volver al Dashboard ↩
             </button>
         </div>
 
@@ -242,7 +242,7 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
                             </div>
                             <div>
                                 <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Motor IA</h3>
-                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Protocolos Gemini 3 Architect.</p>
+                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Asistencia Técnica & Planificación Gemini Flash.</p>
                             </div>
                         </div>
                         <button onClick={() => toggleFeature('enableAI')} className="w-full py-4 mt-8 md:mt-10 bg-white text-black rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all active:scale-95">
@@ -395,7 +395,7 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
                 <div className="bg-[#0F0F11]/60 border border-white/5 rounded-[45px] p-10 space-y-10">
                      <div className="flex items-center gap-4">
                          <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-                         <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Auditoría de Protocolos</h3>
+                         <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Auditoría de Rutinas y Cargas</h3>
                      </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                         <div className="space-y-6">

@@ -4,10 +4,11 @@ import { toLbs, toKg } from '../../lib/units';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  initialValue?: number;
 }
 
-export const UnitConverterModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const [val, setVal] = useState<string>('80');
+export const UnitConverterModal: React.FC<Props> = ({ isOpen, onClose, initialValue }) => {
+  const [val, setVal] = useState<string>(initialValue !== undefined ? String(initialValue) : '80');
   const [mode, setMode] = useState<'kg_to_lbs' | 'lbs_to_kg'>('kg_to_lbs');
 
   if (!isOpen) return null;

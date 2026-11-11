@@ -217,7 +217,15 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
   const systemConfig = storageService.getSystemConfig();
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white">
+    <div className="min-h-screen bg-[#050507] text-white relative overflow-hidden">
+      {/* CAPA DISCRETA DE SEGURIDAD ANTIPIRATERÍA (FORENSIC WATERMARK) */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.035] overflow-hidden select-none flex flex-col justify-around rotate-[-15deg] scale-150">
+        {Array.from({ length: 8 }).map((_, idx) => (
+          <div key={idx} className="whitespace-nowrap text-[9px] font-mono font-bold tracking-[0.35em] text-white text-center">
+            KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ. • PROPIEDAD INTELECTUAL • ATLETA: {user.name.toUpperCase()}
+          </div>
+        ))}
+      </div>
       <main className="max-w-md mx-auto pt-8 px-6 pb-32">
          
          {activeTab === 'train' && (
@@ -430,12 +438,12 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, availableWo
                      </button>
                  )}
                   {/* MARCA DE AGUA Y PROTECCIÓN DE PROPIEDAD INTELECTUAL */}
-                  <div className="text-center pt-8 pb-4">
-                     <p className="text-[8px] font-bold uppercase tracking-[0.25em] text-white/25">
-                        🔒 Propiedad Intelectual Kinetix Functional Zone
+                  <div className="text-center pt-8 pb-4 select-none pointer-events-none">
+                     <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/30">
+                        🔒 Propiedad Intelectual Kinetix Functional Zone • Lic. Jorge González.
                      </p>
                      <p className="text-[7px] text-white/20 tracking-wider mt-0.5">
-                        Metodología Exclusiva Lic. Jorge González & Leslie • Asignado a {user.name}
+                        Metodología Exclusiva Lic. Jorge González. • Asignado a {user.name} • Prohibida su Copia o Difusión
                      </p>
                   </div>
              </div>

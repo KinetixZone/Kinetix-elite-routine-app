@@ -179,16 +179,18 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-                {/* Enlace a App de Control de Pagos */}
-                <a 
-                    href="https://kinetix-control.vercel.app/" 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
-                    title="Control de Pagos & Membresías (kinetix-control.vercel.app)"
-                >
-                    <span>💳</span> <span className="hidden sm:inline">App </span>Pagos ↗
-                </a>
+                {/* Enlace a App de Control de Pagos (EXCLUSIVO DUEÑOS: LESLIE & JORGE) */}
+                {user.role === 'owner' && (
+                    <a 
+                        href="https://kinetix-control.vercel.app/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
+                        title="Control de Pagos & Membresías (Solo Dueños)"
+                    >
+                        <span>💳</span> <span className="hidden sm:inline">App </span>Pagos ↗
+                    </a>
+                )}
 
                 {/* Enlace a App de Cargas, RM & Peso */}
                 <a 
@@ -267,8 +269,8 @@ const App: React.FC = () => {
 
         <main className="animate-in fade-in duration-500">
             {view === 'tracker' && <LiveTracker workout={currentWorkout} user={user} onFinish={handleFinishWorkout} />}
-            {view === 'home' && <CoachHome onViewChange={setView} />}
-            {view === 'crm' && <AthleteCRM onSwitchUser={refreshWorkoutContext} />}
+            {view === 'home' && <CoachHome onViewChange={setView} currentUser={user} />}
+            {view === 'crm' && <AthleteCRM onSwitchUser={refreshWorkoutContext} currentUser={user} />}
             {view === 'library' && <ExerciseLibrary />}
             {view === 'manager' && <WorkoutManager />}
             {view === 'admin_dashboard' && <AdminDashboard currentUser={user} onNavigate={setView} />}

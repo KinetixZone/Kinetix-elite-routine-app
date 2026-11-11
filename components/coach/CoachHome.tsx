@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { storageService, AthleteInsight } from '../../services/storageService';
 import { User, Workout } from '../../types/kinetix';
 
-export const CoachHome: React.FC<{ onViewChange: (view: any) => void }> = ({ onViewChange }) => {
+export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUser?: User }> = ({ onViewChange, currentUser }) => {
   const athletes = useMemo(() => storageService.getAthletes(), []);
   // Fix: storageService.getTemplates() is async, so use useState + useEffect to avoid handling a raw Promise object.
   const [templates, setTemplates] = useState<Workout[]>([]);
@@ -140,23 +140,45 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void }> = ({ onV
                 </div>
             </div>
 
-            {/* ECOSISTEMA DE PAGOS & PROGRESO */}
-            <div className="bg-[#0F0F11] border border-cyan-500/30 p-8 rounded-[40px] space-y-4 shadow-[0_0_30px_rgba(0,240,255,0.08)]">
-                <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-400">Ecosistema Kinetix</span>
-                    <span className="text-[7px] bg-cyan-950 text-cyan-300 font-mono px-2 py-0.5 rounded-full border border-cyan-500/30">CONECTADO</span>
+            {/* ECOSISTEMA: CONTROL DE PAGOS (SOLO VISIBLE PARA DUEÑOS) */}
+            {currentUser?.role === 'owner' && (
+                <div className="bg-[#0F0F11] border border-cyan-500/30 p-8 rounded-[40px] space-y-4 shadow-[0_0_30px_rgba(0,240,255,0.08)]">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-400">Panel Financiero</span>
+                        <span className="text-[7px] bg-cyan-950 text-cyan-300 font-mono px-2 py-0.5 rounded-full border border-cyan-500/30">DUEÑOS</span>
+                    </div>
+                    <h4 className="text-xl font-black uppercase italic tracking-tight text-white leading-tight">Control de Pagos & Membresías</h4>
+                    <p className="text-[9px] text-white/40 leading-relaxed">
+                       Gestión de suscripciones, cuotas activas e historial de facturación de Kinetix Functional Zone.
+                    </p>
+                    <a 
+                       href="https://kinetix-control.vercel.app/" 
+                       target="_blank" 
+                       rel="noopener noreferrer" 
+                       className="w-full py-4 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
+                    >
+                       <span>💳</span> Abrir kinetix-control.vercel.app ↗
+                    </a>
                 </div>
-                <h4 className="text-xl font-black uppercase italic tracking-tight text-white leading-tight">Control de Pagos & Membresías</h4>
+            )}
+
+            {/* SEGUIMIENTO DE CARGAS, RM Y PESO (PARA TODOS LOS COACHES) */}
+            <div className="bg-[#0F0F11] border border-red-500/20 p-8 rounded-[40px] space-y-4 shadow-[0_0_30px_rgba(255,0,0,0.05)]">
+                <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-red-500">Biomecánica & Cargas</span>
+                    <span className="text-[7px] bg-red-950 text-red-400 font-mono px-2 py-0.5 rounded-full border border-red-500/30">MÉTRICAS</span>
+                </div>
+                <h4 className="text-xl font-black uppercase italic tracking-tight text-white leading-tight">Seguimiento de Cargas & RM</h4>
                 <p className="text-[9px] text-white/40 leading-relaxed">
-                   Verifica el estado financiero de los atletas de Kinetix y los alumnos personalizados de Jorge.
+                   Consulta récords 1RM, volumen por grupo muscular y evolución de peso corporal de los atletas.
                 </p>
                 <a 
                    href="https://kinetix-progress.vercel.app/" 
                    target="_blank" 
                    rel="noopener noreferrer" 
-                   className="w-full py-4 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
+                   className="w-full py-4 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
                 >
-                   <span>💳</span> Abrir kinetix-progress.vercel.app ↗
+                   <span>📈</span> Abrir kinetix-progress.vercel.app ↗
                 </a>
             </div>
 

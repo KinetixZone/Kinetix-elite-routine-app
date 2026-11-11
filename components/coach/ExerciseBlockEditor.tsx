@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { WorkoutExercise, TrainingMethod, DropSetNode, SetType } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { getYoutubeEmbedUrl, getYoutubeVideoId } from '../../lib/youtube';
+import { getWeightEquivalenceHint } from '../../lib/units';
 
 interface Props {
   exercise: WorkoutExercise;
@@ -465,7 +466,14 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                                 {/* CARD PRINCIPAL (A) */}
                                 <div className="bg-[#121215] p-3 rounded-2xl border border-white/5 space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-[7px] font-black text-yellow-500 uppercase">A-KG</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[7px] font-black text-yellow-500 uppercase">A-KG</span>
+                                            {(() => {
+                                                const w = (exercise.targetLoad || '').split(',')[i]?.trim() || '0';
+                                                const hint = getWeightEquivalenceHint(w, 'kg');
+                                                return hint ? <span className="text-[6px] font-mono text-white/40">{hint}</span> : null;
+                                            })()}
+                                        </div>
                                         <input type="text" className="w-20 bg-transparent text-right text-lg font-black text-yellow-500 outline-none" value={(exercise.targetLoad || '').split(',')[i]?.trim() || '0'} onChange={e => updateMatrixValue('targetLoad', i, e.target.value)} />
                                     </div>
                                     <div className="flex items-center justify-between border-t border-white/5 pt-2">
@@ -484,7 +492,14 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                                 {['biserie', 'triserie', 'giant_set'].includes(exercise.method || '') && exercise.pair && (
                                     <div className="bg-[#0A0A0C] p-3 rounded-2xl border border-blue-500/20 space-y-2.5 animate-in fade-in slide-in-from-top-2">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[7px] font-black text-blue-500 uppercase">B-KG</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[7px] font-black text-blue-500 uppercase">B-KG</span>
+                                                {(() => {
+                                                    const w = (exercise.pair.targetLoad || '').split(',')[i]?.trim() || '0';
+                                                    const hint = getWeightEquivalenceHint(w, 'kg');
+                                                    return hint ? <span className="text-[6px] font-mono text-white/40">{hint}</span> : null;
+                                                })()}
+                                            </div>
                                             <input type="text" className="w-20 bg-transparent text-right text-lg font-black text-blue-400 outline-none" value={(exercise.pair.targetLoad || '').split(',')[i]?.trim() || '0'} onChange={e => updateMatrixValue('targetLoad', i, e.target.value, true)} />
                                         </div>
                                         <div className="flex items-center justify-between border-t border-white/5 pt-2">
@@ -502,7 +517,14 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                                     return (
                                         <div key={sIdx} className={`bg-[#0A0A0C] p-3 rounded-2xl border ${borderClass} space-y-2.5 animate-in fade-in slide-in-from-top-2`}>
                                             <div className="flex items-center justify-between">
-                                                <span className={`text-[7px] font-black ${textClass} uppercase`}>{letter}-KG</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`text-[7px] font-black ${textClass} uppercase`}>{letter}-KG</span>
+                                                    {(() => {
+                                                        const w = (sub.targetLoad || '').split(',')[i]?.trim() || '0';
+                                                        const hint = getWeightEquivalenceHint(w, 'kg');
+                                                        return hint ? <span className="text-[6px] font-mono text-white/40">{hint}</span> : null;
+                                                    })()}
+                                                </div>
                                                 <input type="text" className={`w-20 bg-transparent text-right text-lg font-black ${textClass} outline-none`} value={(sub.targetLoad || '').split(',')[i]?.trim() || '0'} onChange={e => updateChainValue(sIdx, 'targetLoad', i, e.target.value)} />
                                             </div>
                                             <div className="flex items-center justify-between border-t border-white/5 pt-2">

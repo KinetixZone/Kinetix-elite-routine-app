@@ -24,6 +24,9 @@ export const WorkoutManager: React.FC = () => {
     incReps: 0 
   });
 
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   useEffect(() => { refreshData(); }, []);
 
   const refreshData = async () => {
@@ -39,11 +42,15 @@ export const WorkoutManager: React.FC = () => {
     await refreshData();
     setView('list');
     setEditingTemplate(null);
+    setToastMsg(`✅ Rutina "${editingTemplate.name}" guardada con éxito.`);
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   const handleCreateMesocycle = async () => {
       if (!assignTarget || selectedAthleteIds.length === 0 || projConfig.days.length === 0) {
-          return alert("Selecciona al menos un atleta, días y plantilla.");
+          setErrorMsg("Selecciona al menos un atleta, días de la semana y plantilla.");
+          setTimeout(() => setErrorMsg(null), 3500);
+          return;
       }
       
       for (const athleteId of selectedAthleteIds) {
@@ -74,14 +81,17 @@ export const WorkoutManager: React.FC = () => {
       }
 
       await refreshData();
-      alert(`✅ Mesociclo de ${projConfig.weeks} semanas desplegado para ${selectedAthleteIds.length} atleta(s).`);
+      setToastMsg(`✅ Mesociclo de ${projConfig.weeks} semanas desplegado para ${selectedAthleteIds.length} atleta(s).`);
+      setTimeout(() => setToastMsg(null), 4000);
       setView('list');
       setSelectedAthleteIds([]);
   };
 
   const handleAssignDirect = async () => {
       if (!assignTarget || selectedAthleteIds.length === 0 || projConfig.days.length === 0) {
-          return alert("Selecciona al menos un atleta y un día.");
+          setErrorMsg("Selecciona al menos un atleta y un día de la semana.");
+          setTimeout(() => setErrorMsg(null), 3500);
+          return;
       }
       
       for (const athleteId of selectedAthleteIds) {
@@ -100,7 +110,8 @@ export const WorkoutManager: React.FC = () => {
           );
       }
       
-      alert(`✅ Rutina asignada y sincronizada para ${selectedAthleteIds.length} atleta(s).`);
+      setToastMsg(`✅ Rutina asignada y sincronizada para ${selectedAthleteIds.length} atleta(s).`);
+      setTimeout(() => setToastMsg(null), 4000);
       await refreshData();
       setView('list');
       setSelectedAthleteIds([]);
@@ -123,8 +134,8 @@ export const WorkoutManager: React.FC = () => {
        <div className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
           <div>
              <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.4em] mb-2 animate-pulse">Kinetix Coach Pro</p>
-             <h1 className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-tight">
-                {view === 'list' ? 'Routine Manager' : view === 'editor' ? 'Protocol Editor' : view === 'meso' ? 'Meso Architect' : view === 'library' ? 'Biblioteca de Ejercicios' : 'Assign Protocol'}
+             <h1 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter text-white leading-tight">
+                {view === 'list' ? 'Gestor de Rutinas' : view === 'editor' ? 'Diseñador de Rutinas' : view === 'meso' ? 'Planificador de Mesociclos' : view === 'library' ? 'Biblioteca de Ejercicios' : 'Asignar Rutina'}
              </h1>
           </div>
           {view === 'list' && (
@@ -142,6 +153,20 @@ export const WorkoutManager: React.FC = () => {
              <button onClick={() => setView('list')} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">← VOLVER</button>
           )}
        </div>
+
+       {/* NOTIFICACIONES TOAST & ERROR */}
+       {toastMsg && (
+         <div className="mb-6 p-4 rounded-2xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-black uppercase tracking-wider animate-in fade-in flex items-center justify-between">
+           <span>{toastMsg}</span>
+           <button onClick={() => setToastMsg(null)} className="text-white/40 hover:text-white text-xs">✕</button>
+         </div>
+       )}
+       {errorMsg && (
+         <div className="mb-6 p-4 rounded-2xl bg-red-600/10 border border-red-500/30 text-red-400 text-xs font-black uppercase tracking-wider animate-in fade-in flex items-center justify-between">
+           <span>⚠️ {errorMsg}</span>
+           <button onClick={() => setErrorMsg(null)} className="text-white/40 hover:text-white text-xs">✕</button>
+         </div>
+       )}
 
        {view === 'list' && (
          <div className="space-y-6">
@@ -203,7 +228,7 @@ export const WorkoutManager: React.FC = () => {
 
        {(view === 'assign' || view === 'meso') && assignTarget && (
          <div className="animate-in zoom-in-95 max-w-xl mx-auto bg-[#0F0F11] border border-white/10 p-12 rounded-[50px] shadow-2xl">
-            <h2 className="text-3xl font-black uppercase italic mb-8 tracking-tighter">{view === 'meso' ? 'Meso Architect' : 'Deploy Protocol'}</h2>
+            <h2 className="text-3xl font-black uppercase italic mb-8 tracking-tighter">{view === 'meso' ? 'Planificador de Mesociclo' : 'Asignar Rutina a Atletas'}</h2>
             <div className="space-y-8">
                <div className="space-y-3">
                    <div className="flex justify-between items-center">
@@ -383,7 +408,7 @@ export const WorkoutManager: React.FC = () => {
                         </div>
                     )}
                 </div>
-               <button onClick={handleSaveTemplate} className="w-full py-8 bg-green-600 rounded-[40px] text-[10px] font-black uppercase tracking-[0.5em] text-white">GUARDAR MASTER TEMPLATE</button>
+               <button onClick={handleSaveTemplate} className="w-full py-8 bg-green-600 rounded-[40px] text-[10px] font-black uppercase tracking-[0.5em] text-white">GUARDAR RUTINA MASTER</button>
            </div>
        )}
 

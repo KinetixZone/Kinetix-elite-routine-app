@@ -305,9 +305,10 @@ const AthleteCalendar: React.FC<{ athleteId: string; onDayClick: (dateStr: strin
 
 interface Props {
   onSwitchUser: () => void;
+  currentUser?: User;
 }
 
-export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
+export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vacaciones' | 'expiring' | 'suspended'>('all');
@@ -333,6 +334,33 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
   const [showScheduler, setShowScheduler] = useState(false);
   const [templates, setTemplates] = useState<Workout[]>([]);
   const [showFormModal, setShowFormModal] = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+
+  const handleStartCustomWorkout = (baseTemplate?: Workout) => {
+    if (!selectedAthlete) return;
+    const today = new Date().toISOString().split('T')[0];
+    const newId = `custom-${selectedAthlete.id}-${Date.now()}`;
+    const custom: Workout = baseTemplate ? JSON.parse(JSON.stringify(baseTemplate)) : {
+      id: newId,
+      name: `Rutina Personalizada - ${selectedAthlete.name.split(' ')[0]}`,
+      publicTitle: `Foco Especial ${selectedAthlete.name.split(' ')[0]}`,
+      category: 'personalizado',
+      day: 1,
+      exercises: [],
+      isTemplate: false,
+      scheduledDate: today,
+      assignedTo: selectedAthlete.id
+    };
+    custom.id = newId;
+    if (baseTemplate) {
+      custom.name = `[Personalizado] ${baseTemplate.name} - ${selectedAthlete.name.split(' ')[0]}`;
+    }
+    custom.assignedTo = selectedAthlete.id;
+    custom.scheduledDate = today;
+    custom.isTemplate = false;
+    setEditingInstance(custom);
+    setShowCustomModal(false);
+  };
   const [athleteToEdit, setAthleteToEdit] = useState<User | null>(null);
 
   useEffect(() => {
@@ -502,16 +530,19 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
           <button onClick={() => { setAthleteToEdit(null); setShowFormModal(true); }} className="w-12 h-12 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-2xl font-black shadow-lg transition-all" title="Crear Nuevo Atleta">+</button>
         </div>
 
-        {/* ENLACE OFICIAL A CONTROL DE PAGOS */}
-        <a 
-           href="https://kinetix-progress.vercel.app/" 
-           target="_blank" 
-           rel="noopener noreferrer" 
-           className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-cyan-950/30 hover:bg-cyan-900/50 border border-cyan-500/30 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all group"
-        >
-           <span className="flex items-center gap-2"><span>💳</span> Control de Pagos Kinetix</span>
-           <span className="text-[8px] text-cyan-400/60 group-hover:text-cyan-300">Abrir ↗</span>
-        </a>
+        {/* ENLACE OFICIAL A CONTROL DE PAGOS (EXCLUSIVO DUEÑOS) */}
+        {currentUser?.role === 'owner' && (
+          <a 
+             href="https://kinetix-control.vercel.app/" 
+             target="_blank" 
+             rel="noopener noreferrer" 
+             className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all group shadow-[0_0_15px_rgba(0,240,255,0.1)]"
+             title="Control de Pagos y Membresías (Exclusivo Dueños)"
+          >
+             <span className="flex items-center gap-2"><span>💳</span> Control de Pagos (Dueños)</span>
+             <span className="text-[8px] text-cyan-400/60 group-hover:text-cyan-300">Abrir ↗</span>
+          </a>
+        )}
 
         <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
              {[
@@ -610,6 +641,13 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                   🏖️ Asignar Vacaciones
                 </button>
                 <button 
+                  onClick={() => setShowCustomModal(true)}
+                  className="bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 px-3.5 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                  title="Clonar o diseñar una rutina exclusiva para este atleta y editar cargas libremente"
+                >
+                  <span>⚡</span> Personalizar Rutina
+                </button>
+                <button 
                   onClick={handleCopyAccess} 
                   className="bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all"
                 >
@@ -669,6 +707,37 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
                     <div className="bg-black/20 rounded-3xl p-6 border border-white/5 space-y-4">
                         <label className="text-[9px] font-black opacity-30 uppercase tracking-widest">Fin de Membresía</label>
                         <input type="date" className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-bold" value={selectedAthlete.cycleEndDate || ''} onChange={e => handleUpdateUser({ cycleEndDate: e.target.value })} />
+                    </div>
+
+                    {/* CONTROL DE MESOCICLO & ADHERENCIA */}
+                    <div className="bg-[#121215] rounded-3xl p-6 border border-white/5 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h4 className="text-xs font-black uppercase tracking-wider text-white">Periodización & Mesociclo</h4>
+                            <span className="text-[8px] bg-red-600/20 text-red-400 font-mono px-2.5 py-0.5 rounded-md font-bold uppercase">
+                                {selectedAthlete.medicalConditions?.includes('Personalizado') ? '⭐ Programa Jorge González' : 'Kinetix Functional'}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                            <div className="bg-black/50 p-3 rounded-2xl border border-white/5">
+                                <p className="text-[7px] font-black uppercase text-white/30">Días x Semana</p>
+                                <p className="text-lg font-black text-cyan-400 italic">{selectedAthlete.daysPerWeek || 4}</p>
+                            </div>
+                            <div className="bg-black/50 p-3 rounded-2xl border border-white/5">
+                                <p className="text-[7px] font-black uppercase text-white/30">Racha Actual</p>
+                                <p className="text-lg font-black text-white italic">{selectedAthlete.streak || 0} 🔥</p>
+                            </div>
+                            <div className="bg-black/50 p-3 rounded-2xl border border-white/5">
+                                <p className="text-[7px] font-black uppercase text-white/30">Sesiones Hechas</p>
+                                <p className="text-lg font-black text-red-500 italic">{completedSessions.length}</p>
+                            </div>
+                        </div>
+                        <button 
+                            type="button" 
+                            onClick={() => setShowCustomModal(true)} 
+                            className="w-full py-3 bg-red-600 hover:bg-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest text-white transition-all shadow-md flex items-center justify-center gap-2"
+                        >
+                            <span>⚡</span> Personalizar o Crear Nueva Sesión para {selectedAthlete.name.split(' ')[0]}
+                        </button>
                     </div>
 
                     <div className="bg-white/[0.02] rounded-3xl p-6 border border-white/5 space-y-3">
@@ -1207,6 +1276,61 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser }) => {
           onApply={() => { setShowScheduler(false); setCalendarTrigger(prev => prev + 1); }} 
         />
       )}
+
+      {/* MODAL: PERSONALIZAR O CREAR RUTINA PARA ESTE ATLETA */}
+      {showCustomModal && selectedAthlete && (
+        <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0F0F11] border border-red-500/30 w-full max-w-lg rounded-[36px] p-8 shadow-2xl space-y-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-red-500">Coach Workspace</p>
+                <h3 className="text-2xl font-black uppercase italic tracking-tight text-white mt-1">
+                  Personalizar para {selectedAthlete.name}
+                </h3>
+                <p className="text-[10px] text-white/40 mt-1">
+                  Crea una rutina única o clona una existente para editar repeticiones, cargas y ejercicios sin alterar la plantilla maestra.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowCustomModal(false)}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+              <button
+                onClick={() => handleStartCustomWorkout()}
+                className="w-full p-4 rounded-2xl bg-white/5 hover:bg-white text-white hover:text-black border border-white/10 text-left transition-all flex items-center justify-between group"
+              >
+                <div>
+                  <h4 className="text-sm font-black uppercase italic">+ Crear Rutina Desde Cero</h4>
+                  <p className="text-[9px] text-white/40 group-hover:text-black/60 font-medium">Lienzo en blanco para añadir ejercicios y bloques específicos</p>
+                </div>
+                <span className="text-xl">✨</span>
+              </button>
+
+              <p className="text-[8px] font-black uppercase tracking-widest text-white/30 pt-2">O Clonar Plantilla Base:</p>
+
+              {templates.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => handleStartCustomWorkout(t)}
+                  className="w-full p-4 rounded-2xl bg-[#141418] hover:bg-red-600/20 border border-white/5 hover:border-red-500/40 text-left transition-all flex items-center justify-between"
+                >
+                  <div>
+                    <h4 className="text-xs font-black uppercase italic text-white">{t.name}</h4>
+                    <span className="text-[8px] text-white/30 uppercase font-mono">{t.exercises?.length || 0} ejercicios • {t.category || 'General'}</span>
+                  </div>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Clonar ⚡</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

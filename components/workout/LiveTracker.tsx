@@ -430,7 +430,15 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white pb-36">
+    <div className="min-h-screen bg-[#050507] text-white pb-36 relative overflow-hidden select-none">
+      {/* CAPA DISCRETA DE SEGURIDAD ANTIPIRATERÍA (FORENSIC WATERMARK) */}
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.035] overflow-hidden select-none flex flex-col justify-around rotate-[-15deg] scale-150">
+        {Array.from({ length: 8 }).map((_, idx) => (
+          <div key={idx} className="whitespace-nowrap text-[9px] font-mono font-bold tracking-[0.35em] text-white text-center">
+            KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ. • PROPIEDAD INTELECTUAL • ATLETA: {(user?.name || 'ATLETA').toUpperCase()}
+          </div>
+        ))}
+      </div>
       
       {/* TOP BAR / HUD */}
       <div className="sticky top-0 z-50 bg-[#050507]/90 backdrop-blur-xl p-4 border-b border-white/5 flex justify-between items-center px-4 md:px-8 gap-3">
@@ -704,6 +712,16 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
             </div>
           );
         })}
+
+        {/* MARCA DE AGUA Y PROTECCIÓN DE PROPIEDAD INTELECTUAL */}
+        <div className="text-center pt-8 pb-4 select-none pointer-events-none">
+          <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/30">
+            🔒 Propiedad Intelectual Kinetix Functional Zone • Lic. Jorge González.
+          </p>
+          <p className="text-[7px] text-white/20 tracking-wider mt-0.5">
+            Metodología Exclusiva Lic. Jorge González. • Asignado a {user?.name || 'Atleta'} • Sesión Privada
+          </p>
+        </div>
       </div>
 
       {/* FLOATING TACTICAL REST TIMER BAR */}
@@ -956,6 +974,13 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
           </div>
         </div>
       )}
+
+      {/* CONVERSOR INTERACTIVO KG ⇄ LBS */}
+      <UnitConverterModal 
+        isOpen={showConverter} 
+        onClose={() => setShowConverter(false)} 
+        initialValue={40} 
+      />
     </div>
   );
 };
