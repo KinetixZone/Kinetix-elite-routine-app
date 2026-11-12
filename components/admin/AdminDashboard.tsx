@@ -131,26 +131,74 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
     setIsDeploying(false);
   };
 
-  const supabaseSQL = `-- KINETIX ELITE MASTER SCHEMA v7.0
--- Copia este código y ejecútalo en Supabase > SQL Editor
+  const [sbUrlInput, setSbUrlInput] = useState(
+    localStorage.getItem('kinetix_custom_supabase_url') || 'https://cckcpwqsolovddlzlkuo.supabase.co'
+  );
+  const [sbKeyInput, setSbKeyInput] = useState(
+    localStorage.getItem('kinetix_custom_supabase_key') || 'sb_publishable_uouTiNM4nKG87oUmobPL4Q_XO6kcvD9'
+  );
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
 
--- 1. TABLA DE ATLETAS (NÚCLEO)
+  const handleSaveSupabaseConfig = () => {
+    const cleanUrl = sbUrlInput.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+    localStorage.setItem('kinetix_custom_supabase_url', cleanUrl);
+    localStorage.setItem('kinetix_custom_supabase_key', sbKeyInput.trim());
+    setSeedResult("✅ Credenciales de Supabase guardadas localmente. Recargando...");
+    setTimeout(() => window.location.reload(), 1200);
+  };
+
+  const handleSeedDatabase = async () => {
+    setIsSeeding(true);
+    setSeedResult("🚀 Sembrando biblioteca de ejercicios, rutinas maestras y atletas en Supabase...");
+    const res = await storageService.seedSupabaseDatabase();
+    setSeedResult(res.message);
+    setIsSeeding(false);
+  };
+
+  const supabaseSQL = `-- =======================================================
+-- KINETIX FUNCTIONAL ZONE - MASTER DATABASE SCHEMA v7.2
+-- Metodología: Lic. Jorge González & Leslie Barrera
+-- Copia este script completo y pégalo en:
+-- Supabase Dashboard > SQL Editor > New query > Run (Ctrl+Enter)
+-- =======================================================
+
+-- 1. TABLA DE PLANTILLAS Y RUTINAS (kinetix_templates)
+CREATE TABLE IF NOT EXISTS public.kinetix_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    "publicTitle" TEXT,
+    category TEXT DEFAULT 'general',
+    day INTEGER DEFAULT 1,
+    exercises JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "isCompleted" BOOLEAN DEFAULT false,
+    "scheduledDate" TEXT,
+    "isTemplate" BOOLEAN DEFAULT true,
+    "assignedTo" TEXT,
+    location TEXT DEFAULT 'Kinetix Functional Zone',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. TABLA DE ATLETAS (athletes)
 CREATE TABLE IF NOT EXISTS public.athletes (
-    id UUID PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     goal TEXT,
     level TEXT,
+    role TEXT DEFAULT 'client',
+    days_per_week INTEGER DEFAULT 4,
+    equipment JSONB DEFAULT '[]'::jsonb,
     is_active BOOLEAN DEFAULT true,
     streak INTEGER DEFAULT 0,
     cycle_end_date DATE,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. TABLA DE ENTRENAMIENTOS (LOGS)
+-- 3. TABLA DE HISTORIAL DE ENTRENAMIENTOS Y RM (workout_logs)
 CREATE TABLE IF NOT EXISTS public.workout_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE,
+    athlete_id TEXT,
     exercise_id TEXT NOT NULL,
     weight NUMERIC DEFAULT 0,
     reps INTEGER DEFAULT 0,
@@ -158,29 +206,49 @@ CREATE TABLE IF NOT EXISTS public.workout_logs (
     timestamp TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. TABLA DE MÉTRICAS FÍSICAS (PROGRESO)
+-- 4. TABLA DE MÉTRICAS CORPORALES Y ANTROPOMETRÍA (body_metrics)
 CREATE TABLE IF NOT EXISTS public.body_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE,
+    athlete_id TEXT,
     weight NUMERIC NOT NULL,
     body_fat NUMERIC,
     waist NUMERIC,
     chest NUMERIC,
     arm NUMERIC,
+    thigh NUMERIC,
     date DATE DEFAULT CURRENT_DATE
 );
 
--- 4. POLÍTICAS DE SEGURIDAD (RLS)
+-- 5. HABILITAR SEGURIDAD (RLS) Y PERMISOS DE ACCESO
+ALTER TABLE public.kinetix_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athletes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.body_metrics ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Atletas pueden ver su propio perfil" ON public.athletes FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR ALL USING (auth.uid() = athlete_id);`;
+-- Políticas de lectura y escritura para la Publishable / Anon Key
+CREATE POLICY "Acceso total plantillas Kinetix" 
+ON public.kinetix_templates FOR ALL 
+TO anon, authenticated 
+USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acceso total atletas Kinetix" 
+ON public.athletes FOR ALL 
+TO anon, authenticated 
+USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acceso total logs entrenamientos" 
+ON public.workout_logs FOR ALL 
+TO anon, authenticated 
+USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acceso total métricas corporales" 
+ON public.body_metrics FOR ALL 
+TO anon, authenticated 
+USING (true) WITH CHECK (true);`;
 
   const copySQL = () => {
       navigator.clipboard.writeText(supabaseSQL);
-      alert("SQL Maestro v7.0 copiado. Listo para Supabase.");
+      alert("✅ SQL Maestro v7.2 copiado. Pégalo en tu Supabase SQL Editor y dale a 'Run'.");
   };
 
   return (
@@ -289,6 +357,7 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
             )}
 
             {activeTab === 'devops' && (
+              <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-[#0F0F11] border border-red-500/20 rounded-[40px] p-8 space-y-6 relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-8 opacity-5 text-8xl grayscale pointer-events-none group-hover:rotate-12 transition-transform">🐙</div>
@@ -344,9 +413,9 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
                     <div className="bg-[#0F0F11] border border-red-500/20 rounded-[40px] p-8 space-y-6 flex flex-col">
                         <div className="flex items-center gap-3">
                             <span className="text-3xl">🐘</span>
-                            <h3 className="text-xl font-black uppercase italic text-red-500 tracking-tighter">SQL Búnker v7.0</h3>
+                            <h3 className="text-xl font-black uppercase italic text-red-500 tracking-tighter">SQL Búnker v7.2</h3>
                         </div>
-                        <p className="text-[10px] text-white/40 uppercase font-bold leading-relaxed">Estructura definitiva para la base de datos. Incluye RLS para Atletas.</p>
+                        <p className="text-[10px] text-white/40 uppercase font-bold leading-relaxed">Estructura definitiva: plantillas de rutinas, atletas, logs de RM y antropometría con RLS.</p>
                         
                         <div className="relative group flex-1">
                             <pre className="bg-black p-5 rounded-2xl text-[9px] font-mono text-white/40 overflow-x-auto h-full max-h-64 border border-white/5 custom-scrollbar">
@@ -361,6 +430,95 @@ CREATE POLICY "Atletas pueden ver sus propios logs" ON public.workout_logs FOR A
                         </div>
                     </div>
                 </div>
+
+                {/* SUPABASE CLOUD SYNC & SEEDER PANEL */}
+                <div className="mt-8 bg-gradient-to-br from-[#0F0F11] to-black border border-cyan-500/30 rounded-[40px] p-8 md:p-10 relative overflow-hidden shadow-2xl">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl flex items-center justify-center text-2xl">⚡</div>
+                            <div>
+                                <span className="text-[8px] font-black uppercase text-cyan-400 tracking-[0.3em]">Cloud Link Supabase</span>
+                                <h3 className="text-xl md:text-2xl font-black uppercase italic text-white tracking-tight">Sincronización y Sembrado de Datos</h3>
+                            </div>
+                        </div>
+                        <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border ${systemStatus.supabase ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                            {systemStatus.supabase ? '● Supabase Conectado' : '○ Supabase Pendiente'}
+                        </span>
+                    </div>
+
+                    <p className="text-[11px] text-white/50 leading-relaxed max-w-3xl mb-6">
+                        Si creaste un proyecto nuevo en Supabase, la base de datos inicia <strong className="text-white">100% vacía</strong>. 
+                        Sigue estos 3 pasos para enlazarla y cargar todas tus rutinas Kinetix y atletas sin errores:
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div className="bg-black/60 border border-white/10 rounded-2xl p-5 space-y-2">
+                            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Paso 1: Crear Tablas</span>
+                            <p className="text-[10px] text-white/40 leading-relaxed">
+                                Copia el <strong>SQL Búnker v7.2</strong> de arriba y ejecútalo en el <strong>SQL Editor</strong> de Supabase.
+                            </p>
+                        </div>
+                        <div className="bg-black/60 border border-white/10 rounded-2xl p-5 space-y-2">
+                            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Paso 2: Sembrar Datos</span>
+                            <p className="text-[10px] text-white/40 leading-relaxed">
+                                Haz clic en el botón <strong>"Sembrar Rutinas y Atletas"</strong> aquí abajo para llenar la base de datos automáticamente.
+                            </p>
+                        </div>
+                        <div className="bg-black/60 border border-white/10 rounded-2xl p-5 space-y-2">
+                            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Paso 3: Variables Vercel</span>
+                            <p className="text-[10px] text-white/40 leading-relaxed">
+                                En Vercel agrega <code className="text-cyan-300">VITE_SUPABASE_URL</code> y <code className="text-cyan-300">VITE_SUPABASE_ANON_KEY</code> y dale Redeploy.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div className="space-y-1.5">
+                            <label className="text-[8px] font-black uppercase tracking-widest text-white/40">URL del Proyecto Supabase (Limpia sin /rest/v1/)</label>
+                            <input 
+                                type="text" 
+                                value={sbUrlInput}
+                                onChange={e => setSbUrlInput(e.target.value)}
+                                placeholder="https://cckcpwqsolovddlzlkuo.supabase.co"
+                                className="w-full bg-black border border-white/10 rounded-xl p-3.5 text-xs font-mono text-cyan-400 outline-none focus:border-cyan-500"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[8px] font-black uppercase tracking-widest text-white/40">Anon / Publishable Key</label>
+                            <input 
+                                type="text" 
+                                value={sbKeyInput}
+                                onChange={e => setSbKeyInput(e.target.value)}
+                                placeholder="sb_publishable_..."
+                                className="w-full bg-black border border-white/10 rounded-xl p-3.5 text-xs font-mono text-cyan-400 outline-none focus:border-cyan-500"
+                            />
+                        </div>
+                    </div>
+
+                    {seedResult && (
+                        <div className="mb-6 p-4 rounded-xl bg-black border border-cyan-500/30 text-xs font-mono text-cyan-300 animate-in fade-in">
+                            {seedResult}
+                        </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <button 
+                            onClick={handleSaveSupabaseConfig}
+                            className="flex-1 py-4 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 border border-white/10"
+                        >
+                            Guardar Credenciales Locales
+                        </button>
+                        <button 
+                            onClick={handleSeedDatabase}
+                            disabled={isSeeding}
+                            className="flex-1 py-4 bg-cyan-500 hover:bg-cyan-400 text-black font-black rounded-xl text-[9px] uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] active:scale-95 disabled:opacity-50"
+                        >
+                            {isSeeding ? 'Subiendo datos a Supabase...' : '🌱 Sembrar Rutinas y Atletas en Supabase'}
+                        </button>
+                    </div>
+                </div>
+            </div>
             )}
 
             {activeTab === 'branding' && (

@@ -265,6 +265,75 @@ class StorageService {
     return all.find(w => w.id === id);
   }
 
+  async seedSupabaseDatabase(): Promise<{ success: boolean; message: string; templatesCount: number; athletesCount: number }> {
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        message: 'Supabase no está configurado aún. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY o ingrésalos en la consola.',
+        templatesCount: 0,
+        athletesCount: 0
+      };
+    }
+
+    try {
+      const templates = PRESET_WORKOUT_TEMPLATES;
+      const athletes = this.getAthletes();
+
+      let templatesInserted = 0;
+      let athletesInserted = 0;
+
+      // 1. Insertar plantillas en public.kinetix_templates
+      for (const tpl of templates) {
+        const { error } = await supabase.from('kinetix_templates').upsert({
+          id: tpl.id,
+          name: tpl.name,
+          publicTitle: tpl.publicTitle || tpl.name,
+          category: tpl.category || 'general',
+          day: tpl.day || 1,
+          exercises: tpl.exercises || [],
+          isCompleted: false,
+          isTemplate: true,
+          scheduledDate: tpl.scheduledDate || null,
+          assignedTo: tpl.assignedTo || null,
+          location: tpl.location || 'Kinetix Functional Zone'
+        });
+        if (!error) templatesInserted++;
+      }
+
+      // 2. Insertar atletas en public.athletes
+      for (const ath of athletes) {
+        const { error } = await supabase.from('athletes').upsert({
+          id: ath.id,
+          name: ath.name,
+          email: ath.email,
+          goal: ath.goal,
+          level: ath.level,
+          role: ath.role,
+          days_per_week: ath.daysPerWeek || 4,
+          equipment: ath.equipment || [],
+          is_active: ath.isActive !== false,
+          streak: ath.streak || 0,
+          cycle_end_date: ath.cycleEndDate || null
+        });
+        if (!error) athletesInserted++;
+      }
+
+      return {
+        success: true,
+        message: `¡Sincronización exitosa! Se sembraron ${templatesInserted} rutinas maestras y ${athletesInserted} atletas en Supabase.`,
+        templatesCount: templatesInserted,
+        athletesCount: athletesInserted
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Error al sembrar en Supabase: ${err?.message || 'Verifica haber corrido el script SQL en Supabase primero.'}`,
+        templatesCount: 0,
+        athletesCount: 0
+      };
+    }
+  }
+
   cloneWithProgression(workout: Workout, athleteId: string, weeks: number, incrementWeight: number, incrementReps: number): Workout[] {
       const results: Workout[] = [];
       const timestamp = Date.now();
