@@ -137,7 +137,7 @@ const App: React.FC = () => {
       return (
         <div className="min-h-screen bg-[#050507] text-white">
             {view === 'tracker' ? (
-                <LiveTracker workout={currentWorkout} user={user} onFinish={handleFinishWorkout} />
+                <LiveTracker workout={currentWorkout} user={user} onFinish={handleFinishWorkout} onExit={() => setView('athlete_home')} />
             ) : (
                 <AthleteHome 
                     user={user} 

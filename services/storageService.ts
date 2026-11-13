@@ -259,6 +259,29 @@ class StorageService {
     }
   }
 
+  async deleteTemplate(templateId: string) {
+    const localTemplates: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+    const filtered = localTemplates.filter(t => t.id !== templateId);
+    localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(filtered));
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('kinetix_templates').delete().eq('id', templateId);
+      } catch (e) { console.error("Error al eliminar en Nube", e); }
+    }
+  }
+
+  async replaceAllTemplates(templates: Workout[]) {
+    localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
+    if (isSupabaseConfigured) {
+      try {
+        for (const tpl of templates) {
+          await supabase.from('kinetix_templates').upsert(tpl);
+        }
+      } catch (e) { console.error("Error al sincronizar restauración", e); }
+    }
+  }
+
   getWorkoutById(id: string): Workout | undefined {
     const data = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
     const all: Workout[] = data ? JSON.parse(data) : [];

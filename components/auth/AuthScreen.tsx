@@ -113,17 +113,6 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                         <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.35em] text-white/40 pt-1">
                             {isAdminMode ? 'Centro de Mando • Leslie & Jorge' : 'Ecosistema de Alto Rendimiento & Atletas'}
                         </p>
-                        
-                        <div className="pt-2">
-                            <a 
-                                href="https://kinetix-progress.vercel.app/" 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400 text-[8px] font-black uppercase tracking-widest transition-all"
-                            >
-                                <span>💳</span> Portal Control de Pagos ↗
-                            </a>
-                        </div>
                     </div>
                 </div>
 
@@ -148,17 +137,15 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                         <div className="space-y-1.5">
                             <div className="flex justify-between items-center pl-1">
                                 <label className="text-[8px] font-black uppercase text-white/40 tracking-[0.2em]">
-                                    {isAdminMode ? 'Clave Maestra de Dueño/Coach' : 'Clave de Acceso Asignada'}
+                                    {isAdminMode ? 'Clave Maestra de Staff' : 'Clave de Acceso Asignada'}
                                 </label>
-                                {isAdminMode ? (
-                                    <span className="text-[7px] text-red-400 font-bold uppercase tracking-wider">kinetix.2302</span>
-                                ) : (
-                                    <span className="text-[7px] text-white/30 font-bold uppercase">Asignada por tu coach</span>
-                                )}
+                                <span className="text-[7px] text-white/30 font-bold uppercase">
+                                    {isAdminMode ? 'Acceso Privado' : 'Asignada por tu coach'}
+                                </span>
                             </div>
                             <input 
                                 type="password" 
-                                placeholder={isAdminMode ? "CLAVE MAESTRA (ej: kinetix.2302)" : "TU CLAVE (ej: kinetix.atleta)"} 
+                                placeholder={isAdminMode ? "Ingresa tu clave maestra" : "Ingresa tu clave de atleta"} 
                                 className={`w-full bg-black/70 border p-4 rounded-2xl font-bold text-xs text-white tracking-wider outline-none transition-all placeholder-white/20 ${isAdminMode ? 'border-red-600/80 focus:border-red-500 text-red-300' : 'border-white/10 focus:border-white/40'}`}
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
@@ -182,71 +169,39 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                     </button>
                 </form>
 
-                {/* Acceso Rápido Directo para Dueños & Demo */}
-                <div className="w-full bg-white/[0.03] border border-white/10 rounded-3xl p-4 md:p-5 space-y-3 shadow-xl">
+                {/* Acceso Demo Atletas (Sin exponer llaves ni accesos internos de dueños/pagos) */}
+                <div className="w-full bg-white/[0.03] border border-white/10 rounded-3xl p-4 space-y-2.5 shadow-xl">
                     <div className="flex items-center justify-between">
-                        <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/40">
-                            Accesos Directos (1 Clic)
+                        <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/40">
+                            Prueba Vista de Atleta
                         </p>
-                        <span className="text-[7px] text-red-400 font-bold uppercase tracking-wider">Dueños & Coaches</span>
+                        <span className="text-[7px] text-cyan-400 font-bold uppercase tracking-wider">Acceso Demo</span>
                     </div>
-
-                    {/* Botones de Dueños / Coaches */}
-                    <div className="grid grid-cols-2 gap-2.5">
-                        <button 
-                            type="button"
-                            onClick={() => handleQuickLogin('leslie23tr@gmail.com', 'kinetix.2302', true)}
-                            className="bg-red-600/15 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 p-3 rounded-2xl text-[9px] font-black uppercase tracking-wider text-left transition-all group flex flex-col gap-0.5 active:scale-95"
-                        >
-                            <span className="flex items-center justify-between">
-                                <span>👑 Coach Leslie</span>
-                                <span className="text-[8px] opacity-60 group-hover:opacity-100">Entrar ➔</span>
-                            </span>
-                            <span className="text-[7px] font-normal lowercase opacity-70 group-hover:opacity-100">Dueña & Coach</span>
-                        </button>
-
-                        <button 
-                            type="button"
-                            onClick={() => handleQuickLogin('jorge02gonzalez@outlook.com', 'kinetix.2302', true)}
-                            className="bg-red-600/15 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 p-3 rounded-2xl text-[9px] font-black uppercase tracking-wider text-left transition-all group flex flex-col gap-0.5 active:scale-95"
-                        >
-                            <span className="flex items-center justify-between">
-                                <span>👑 Coach Jorge</span>
-                                <span className="text-[8px] opacity-60 group-hover:opacity-100">Entrar ➔</span>
-                            </span>
-                            <span className="text-[7px] font-normal lowercase opacity-70 group-hover:opacity-100">Head Coach & Dueño</span>
-                        </button>
-                    </div>
-
-                    {/* Botones de Atletas */}
-                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                    <div className="grid grid-cols-2 gap-2">
                         <button 
                             type="button"
                             onClick={() => handleQuickLogin('carlos@kinetix.com', 'kinetix.atleta', true)}
-                            className="bg-white/5 hover:bg-white text-white/60 hover:text-black border border-white/10 p-2.5 rounded-xl text-[8px] font-black uppercase tracking-wider text-center transition-all active:scale-95"
+                            className="bg-white/5 hover:bg-white text-white/70 hover:text-black border border-white/10 p-2.5 rounded-xl text-[8px] font-black uppercase tracking-wider text-center transition-all active:scale-95"
                         >
                             🏃 Atleta Carlos
                         </button>
                         <button 
                             type="button"
                             onClick={() => handleQuickLogin('ana@kinetix.com', 'kinetix.atleta', true)}
-                            className="bg-white/5 hover:bg-white text-white/60 hover:text-black border border-white/10 p-2.5 rounded-xl text-[8px] font-black uppercase tracking-wider text-center transition-all active:scale-95"
+                            className="bg-white/5 hover:bg-white text-white/70 hover:text-black border border-white/10 p-2.5 rounded-xl text-[8px] font-black uppercase tracking-wider text-center transition-all active:scale-95"
                         >
                             🏃 Atleta Ana
                         </button>
                     </div>
                 </div>
 
-                {/* Explicación de cómo entrar */}
-                <div className="w-full bg-black/40 border border-white/5 rounded-2xl p-3.5 space-y-1.5 text-left">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-red-400">
-                        📋 ¿Cómo entrar al sistema?
+                {/* Instrucciones limpias sin filtrar contraseñas internas */}
+                <div className="w-full bg-black/40 border border-white/5 rounded-2xl p-3.5 space-y-1 text-left">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-white/50">
+                        🔒 Metodología Exclusiva Lic. Jorge González • Kinetix Functional Zone
                     </p>
-                    <p className="text-[8px] text-white/50 leading-relaxed">
-                        <strong className="text-white">Leslie y Jorge (Dueños/Coaches):</strong> Usen su email (<code className="text-red-400">leslie23tr@gmail.com</code> o <code className="text-red-400">jorge02gonzalez@outlook.com</code>) y la Clave Maestra <code className="text-red-400 font-bold">kinetix.2302</code>, o toquen su botón de acceso directo arriba.
-                    </p>
-                    <p className="text-[8px] text-white/50 leading-relaxed">
-                        <strong className="text-white">Atletas:</strong> Entran con su email y la clave que ustedes les asignen en la pestaña <strong>Atletas</strong>.
+                    <p className="text-[8px] text-white/40 leading-relaxed">
+                        Ingresa con el correo y clave asignados por tu entrenador para acceder a tu sesión del día.
                     </p>
                 </div>
 

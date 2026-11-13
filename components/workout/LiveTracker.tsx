@@ -11,6 +11,7 @@ import { getWeightEquivalenceHint, WeightUnit } from '../../lib/units';
 interface Props {
   workout: Workout;
   onFinish: (data: ProgressState) => void;
+  onExit?: () => void;
   user?: any;
 }
 
@@ -145,7 +146,7 @@ const generateTrackingRows = (ex: WorkoutExercise): TrackingRow[] => {
   return rows;
 };
 
-export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
+export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }) => {
   const [progress, setProgress] = useState<ProgressState>({
     currentExerciseIndex: 0,
     completedSets: 0,
@@ -161,6 +162,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
   const [expandedId, setExpandedId] = useState<string | null>(workout.exercises[0]?.exerciseId || null);
   const [elapsed, setElapsed] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const [feedback, setFeedback] = useState<SessionFeedback>({ rpe: 7, fatigue: 3, notes: '' });
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
@@ -430,65 +432,111 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white pb-36 relative overflow-hidden select-none">
+    <div 
+      className="min-h-screen bg-[#050507] text-white pb-36 relative overflow-hidden select-none"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* CAPA DISCRETA DE SEGURIDAD ANTIPIRATERÍA (FORENSIC WATERMARK) */}
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.035] overflow-hidden select-none flex flex-col justify-around rotate-[-15deg] scale-150">
-        {Array.from({ length: 8 }).map((_, idx) => (
-          <div key={idx} className="whitespace-nowrap text-[9px] font-mono font-bold tracking-[0.35em] text-white text-center">
-            KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ. • PROPIEDAD INTELECTUAL • ATLETA: {(user?.name || 'ATLETA').toUpperCase()}
+      <div className="fixed inset-0 pointer-events-none z-10 opacity-[0.065] overflow-hidden select-none flex flex-col justify-around rotate-[-18deg] scale-125">
+        {Array.from({ length: 6 }).map((_, idx) => (
+          <div key={idx} className="whitespace-nowrap text-[10px] font-mono font-bold tracking-[0.28em] text-white text-center">
+            🔒 PROPIEDAD INTELECTUAL KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ • {(user?.name || 'ATLETA').toUpperCase()}
           </div>
         ))}
       </div>
       
       {/* TOP BAR / HUD */}
-      <div className="sticky top-0 z-50 bg-[#050507]/90 backdrop-blur-xl p-4 border-b border-white/5 flex justify-between items-center px-4 md:px-8 gap-3">
-        <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-              <h1 className="text-[10px] font-black uppercase text-red-500 tracking-[0.3em] truncate max-w-[150px] md:max-w-[220px]">
+      <div className="sticky top-0 z-50 bg-[#050507]/95 backdrop-blur-xl border-b border-white/10">
+        <div className="p-3 md:px-8 flex justify-between items-center gap-3 max-w-4xl mx-auto">
+          <div className="flex items-center gap-3 min-w-0">
+            {onExit && (
+              <button
+                type="button"
+                onClick={() => progress.workoutLogs.length > 0 ? setConfirmExit(true) : onExit()}
+                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white/80 shrink-0"
+              >
+                ← Salir
+              </button>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-[11px] font-black uppercase text-red-500 tracking-wider truncate">
                 {workout.publicTitle || workout.name}
               </h1>
+              <p className="text-xl font-black italic tracking-tighter leading-none tabular-nums">
+                {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
+              </p>
             </div>
-            <p className="text-2xl font-black italic tracking-tighter leading-none mt-0.5">
-              {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
-            </p>
+
+            {currentTonnage > 0 && (
+              <div className="hidden sm:flex flex-col bg-white/5 border border-white/10 px-3 py-1 rounded-xl text-center shrink-0">
+                <span className="text-[8px] font-black uppercase tracking-wider text-cyan-400">Tonelaje</span>
+                <span className="text-xs font-black text-white tabular-nums">
+                  {currentTonnage.toLocaleString()} KG
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* TONELAJE EN TIEMPO REAL */}
-          {currentTonnage > 0 && (
-            <div className="hidden sm:flex flex-col bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl text-center shrink-0">
-              <span className="text-[7px] font-black uppercase tracking-widest text-cyan-400">Tonelaje</span>
-              <span className="text-xs font-black text-white italic">
-                {currentTonnage.toLocaleString()} <span className="text-[8px] text-white/40 not-italic">KG</span>
-              </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              type="button"
+              onClick={() => setShowConverter(true)} 
+              className="px-3 py-2.5 bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 hover:text-white transition-all flex items-center gap-1.5"
+              title="Abrir Conversor de Cargas KG ⇄ LBS"
+            >
+              <span>⚖️</span>
+              <span className="hidden sm:inline">KG ⇄ LBS</span>
+            </button>
+
+            <button 
+              onClick={handleCompleteRequest} 
+              className="px-4 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all shrink-0"
+            >
+              Finalizar
+            </button>
+          </div>
+        </div>
+
+        {/* BARRA DE NAVEGACIÓN RÁPIDA ENTRE EJERCICIOS (TIPO SMART FIT / HEVY) */}
+        <div className="max-w-4xl mx-auto px-3 md:px-8 pb-3 flex gap-2 overflow-x-auto no-scrollbar">
+          {workout.exercises.map((ex, idx) => {
+            const exRows = generateTrackingRows(ex);
+            const doneCount = progress.workoutLogs.filter(l => exRows.some(r => r.exerciseId === l.exerciseId && r.globalIndex === l.setIndex)).length;
+            const isComplete = doneCount >= exRows.length && exRows.length > 0;
+            const isCurrent = expandedId === ex.exerciseId;
+            return (
+              <button
+                key={`${ex.exerciseId}-${idx}`}
+                type="button"
+                onClick={() => setExpandedId(ex.exerciseId)}
+                className={`px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
+                  isCurrent
+                    ? 'bg-red-600 text-white shadow-md'
+                    : isComplete
+                    ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                <span className="tabular-nums">{isComplete ? '✓' : `${idx + 1}.`}</span>
+                <span className="max-w-[110px] truncate">{ex.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {confirmExit && onExit && (
+          <div className="bg-red-950/90 border-t border-red-500/40 px-4 py-3 flex items-center justify-between gap-3 max-w-4xl mx-auto">
+            <span className="text-xs font-bold text-red-100">¿Salir de la sesión sin finalizar? Se perderán las series no guardadas.</span>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => setConfirmExit(false)} className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white">Seguir</button>
+              <button onClick={onExit} className="px-3 py-1.5 rounded-lg bg-red-600 text-xs font-bold text-white">Sí, Salir</button>
             </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* BOTÓN CONVERSOR KG ⇄ LBS */}
-          <button 
-            type="button"
-            onClick={() => setShowConverter(true)} 
-            className="px-3 py-2.5 bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all flex items-center gap-1.5"
-            title="Abrir Conversor de Cargas KG ⇄ LBS"
-          >
-            <span>⚖️</span>
-            <span className="hidden sm:inline">KG ⇄ LBS</span>
-          </button>
-
-          <button 
-            onClick={handleCompleteRequest} 
-            className="px-5 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-all shrink-0"
-          >
-            Finalizar
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* EXERCISES LIST */}
-      <div className="p-4 space-y-4 max-w-xl mx-auto">
+      <div className="relative z-20 p-4 space-y-4 max-w-2xl mx-auto">
         {workout.exercises.map((ex, i) => {
           const rows = generateTrackingRows(ex);
           const isExpanded = expandedId === ex.exerciseId;
@@ -707,19 +755,51 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, user }) => {
                       );
                     })}
                   </div>
+
+                  {/* NAVEGACIÓN ENTRE EJERCICIOS ANTERIOR / SIGUIENTE */}
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      disabled={i === 0}
+                      onClick={() => setExpandedId(workout.exercises[i - 1]?.exerciseId || null)}
+                      className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/15 disabled:opacity-30 text-xs font-black uppercase tracking-wider text-white transition-all"
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="text-[11px] font-bold text-white/40 tabular-nums">
+                      Ejercicio {i + 1} de {workout.exercises.length}
+                    </span>
+                    {i < workout.exercises.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(workout.exercises[i + 1]?.exerciseId || null)}
+                        className="px-4 py-3 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-black uppercase tracking-wider transition-all"
+                      >
+                        Siguiente →
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleCompleteRequest}
+                        className="px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition-all"
+                      >
+                        Terminar ✓
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
 
-        {/* MARCA DE AGUA Y PROTECCIÓN DE PROPIEDAD INTELECTUAL */}
-        <div className="text-center pt-8 pb-4 select-none pointer-events-none">
-          <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/30">
-            🔒 Propiedad Intelectual Kinetix Functional Zone • Lic. Jorge González.
+        {/* MARCA DE AGUA Y PROTECCIÓN DE PROPIEDAD INTELECTUAL VISIBLE */}
+        <div className="bg-[#0A0A0D] border border-white/10 rounded-2xl p-4 text-center space-y-1 select-none pointer-events-none">
+          <p className="text-[11px] font-black uppercase tracking-wider text-white/80">
+            🔒 Propiedad Intelectual Kinetix Functional Zone • Lic. Jorge González
           </p>
-          <p className="text-[7px] text-white/20 tracking-wider mt-0.5">
-            Metodología Exclusiva Lic. Jorge González. • Asignado a {user?.name || 'Atleta'} • Sesión Privada
+          <p className="text-[10px] text-white/50">
+            Metodología Exclusiva Lic. Jorge González • Asignado a {user?.name || 'Atleta'} • Prohibida su copia
           </p>
         </div>
       </div>

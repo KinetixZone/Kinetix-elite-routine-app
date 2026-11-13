@@ -21,37 +21,9 @@ const RANK_SYSTEM = [
 ];
 
 export const ProgressDashboard: React.FC = () => {
-  const [view, setView] = useState<'performance' | 'physique'>('performance');
-  
   // Data Fetching
   const logs = useMemo(() => storageService.getAllLogs(), []);
   const allExercises = useMemo(() => storageService.getExercises(), []);
-  const metrics = useMemo(() => storageService.getBodyMetrics(), [view]); // Recargar al cambiar vista
-
-  // --- PHYSIQUE LOGIC ---
-  const [newMetric, setNewMetric] = useState<BodyMetric>({
-      date: new Date().toISOString().split('T')[0],
-      weight: 0,
-      bodyFat: 0,
-      chest: 0, waist: 0, arm: 0, thigh: 0
-  });
-
-  const savePhysiqueLog = () => {
-      if (newMetric.weight <= 0) return alert("Ingresa al menos el peso.");
-      storageService.saveBodyMetric(newMetric);
-      alert("✅ Registro guardado. Gráficas actualizadas.");
-      // Forzar re-render simple cambiando a view y back (o mejor, usar useEffect, pero esto es rapido)
-      setView('performance'); 
-      setTimeout(() => setView('physique'), 10);
-  };
-
-  const weightHistory = useMemo(() => {
-      // Tomar últimos 7 registros ordenados por fecha asc para la gráfica
-      return [...metrics].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(-7);
-  }, [metrics]);
-
-  const maxWeight = Math.max(...weightHistory.map(m => m.weight), 1);
-  const minWeight = Math.min(...weightHistory.map(m => m.weight), maxWeight);
 
   // --- PERFORMANCE LOGIC ---
   const lifetimeVolume = useMemo(() => {
@@ -218,128 +190,28 @@ export const ProgressDashboard: React.FC = () => {
   const maxVol = Math.max(...volumeData.map(d => d[1].vol), 1);
 
   return (
-    <div className="space-y-6 pb-20 animate-in fade-in duration-1000">
+    <div className="space-y-6 pb-20 animate-in fade-in duration-700">
       
-      {/* HEADER TABS SWITCHER */}
-      <div className="flex p-1 bg-[#1A1A1D] rounded-full border border-white/5">
-          <button 
-            onClick={() => setView('performance')}
-            className={`flex-1 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${view === 'performance' ? 'bg-white text-black shadow-lg' : 'text-white/30 hover:text-white'}`}
+      {/* ENLACE A APP EXTERNA OFICIAL DE PESO, MEDIDAS Y 1RM */}
+      <div className="bg-[#0F0F11] border border-cyan-500/25 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400">Ecosistema Kinetix Progress</p>
+              <p className="text-xs text-white/70 mt-0.5">
+                  Tu historial completo de peso corporal, medidas y 1RM vive en tu app dedicada de progreso.
+              </p>
+          </div>
+          <a 
+              href="https://kinetix-progress.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-5 py-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black border border-cyan-500/30 text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all shrink-0"
           >
-            Performance
-          </button>
-          <button 
-            onClick={() => setView('physique')}
-            className={`flex-1 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${view === 'physique' ? 'bg-blue-600 text-white shadow-lg' : 'text-white/30 hover:text-white'}`}
-          >
-            Físico & Medidas
-          </button>
+              Abrir Cargas & Medidas ↗
+          </a>
       </div>
 
-      {/* --- VIEW: PHYSIQUE (NEW) --- */}
-      {view === 'physique' && (
-          <div className="space-y-6 animate-in slide-in-from-right-4">
-              
-              {/* CARD: LATEST STATS */}
-              <div className="bg-gradient-to-br from-blue-900/20 to-black rounded-[40px] p-8 border border-blue-500/20 shadow-xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 text-8xl grayscale">⚖️</div>
-                  <div className="relative z-10">
-                      <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Último Registro</p>
-                      <div className="flex items-end gap-2">
-                          <h2 className="text-5xl font-black text-white italic tracking-tighter">
-                              {metrics[0]?.weight || '--'} <span className="text-lg text-white/30 not-italic">KG</span>
-                          </h2>
-                          <div className="mb-2 px-3 py-1 bg-blue-900/40 rounded-lg border border-blue-500/30">
-                              <span className="text-[10px] font-bold text-blue-300">
-                                  {metrics[0]?.bodyFat ? `${metrics[0].bodyFat}% GRASA` : 'Sin % Grasa'}
-                              </span>
-                          </div>
-                      </div>
-                      <p className="text-[9px] text-white/30 mt-4 uppercase tracking-widest">
-                          Fecha: {metrics[0]?.date || 'N/A'}
-                      </p>
-                  </div>
-              </div>
-
-              {/* CHART: WEIGHT TREND */}
-              <div className="bg-[#0F0F11] rounded-[40px] border border-white/5 p-8 shadow-xl">
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-sm font-black uppercase italic text-white tracking-widest">Tendencia de Peso</h3>
-                      <span className="text-[9px] bg-white/5 px-2 py-1 rounded text-white/30">7 Registros</span>
-                  </div>
-                  
-                  <div className="h-40 flex items-end gap-2 relative">
-                      {weightHistory.length > 0 ? weightHistory.map((m, i) => {
-                          // Normalizar altura entre min y max para resaltar cambios sutiles
-                          const range = maxWeight - minWeight || 1;
-                          const heightPct = 20 + ((m.weight - minWeight) / range) * 70;
-                          
-                          return (
-                              <div key={i} className="flex-1 flex flex-col items-center group">
-                                  <div className="relative w-full flex flex-col items-center justify-end h-full">
-                                      <div 
-                                          className="w-full bg-blue-600/30 border-t-2 border-blue-500 rounded-t-sm transition-all group-hover:bg-blue-600"
-                                          style={{ height: `${heightPct}%` }}
-                                      />
-                                      <div className="absolute -top-6 text-[9px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                          {m.weight}
-                                      </div>
-                                  </div>
-                                  <p className="text-[8px] text-white/20 mt-2">{m.date.slice(5)}</p>
-                              </div>
-                          );
-                      }) : (
-                          <div className="w-full h-full flex items-center justify-center text-white/20 text-[10px]">
-                              Sin datos suficientes
-                          </div>
-                      )}
-                  </div>
-              </div>
-
-              {/* INPUT FORM: ADD METRICS */}
-              <div className="bg-[#151518] rounded-[32px] p-6 border border-white/5 space-y-4">
-                  <h3 className="text-sm font-black uppercase text-white/50 tracking-widest mb-2">Nuevo Check-in</h3>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                          <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Fecha</label>
-                          <input type="date" className="w-full bg-black border border-white/10 rounded-xl p-3 text-white text-xs font-bold" value={newMetric.date} onChange={e => setNewMetric({...newMetric, date: e.target.value})} />
-                      </div>
-                      <div className="space-y-2">
-                          <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Peso (KG)</label>
-                          <input type="number" className="w-full bg-black border border-white/10 rounded-xl p-3 text-white text-xs font-bold focus:border-blue-500 outline-none" value={newMetric.weight || ''} onChange={e => setNewMetric({...newMetric, weight: parseFloat(e.target.value)})} placeholder="0.0" />
-                      </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-2">
-                      <div className="space-y-1">
-                          <label className="text-[7px] font-black text-white/30 uppercase tracking-widest block text-center">% Grasa</label>
-                          <input type="number" className="w-full bg-black border border-white/10 rounded-lg p-2 text-center text-white text-xs font-bold outline-none" value={newMetric.bodyFat || ''} onChange={e => setNewMetric({...newMetric, bodyFat: parseFloat(e.target.value)})} placeholder="%" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[7px] font-black text-white/30 uppercase tracking-widest block text-center">Cintura</label>
-                          <input type="number" className="w-full bg-black border border-white/10 rounded-lg p-2 text-center text-white text-xs font-bold outline-none" value={newMetric.waist || ''} onChange={e => setNewMetric({...newMetric, waist: parseFloat(e.target.value)})} placeholder="cm" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[7px] font-black text-white/30 uppercase tracking-widest block text-center">Pecho</label>
-                          <input type="number" className="w-full bg-black border border-white/10 rounded-lg p-2 text-center text-white text-xs font-bold outline-none" value={newMetric.chest || ''} onChange={e => setNewMetric({...newMetric, chest: parseFloat(e.target.value)})} placeholder="cm" />
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[7px] font-black text-white/30 uppercase tracking-widest block text-center">Brazo</label>
-                          <input type="number" className="w-full bg-black border border-white/10 rounded-lg p-2 text-center text-white text-xs font-bold outline-none" value={newMetric.arm || ''} onChange={e => setNewMetric({...newMetric, arm: parseFloat(e.target.value)})} placeholder="cm" />
-                      </div>
-                  </div>
-
-                  <button onClick={savePhysiqueLog} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-transform active:scale-95 mt-2">
-                      Guardar Medidas
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {/* --- VIEW: PERFORMANCE (OLD) --- */}
-      {view === 'performance' && (
-        <div className="space-y-6 animate-in slide-in-from-left-4">
+      {/* --- VIEW: PERFORMANCE --- */}
+      <div className="space-y-6">
             {/* ELITE RANK CARD */}
             <div className="bg-gradient-to-br from-[#1A1A1D] to-black rounded-[40px] p-8 border border-white/5 relative overflow-hidden shadow-2xl">
                 <div className="absolute top-0 right-0 p-6 opacity-5 font-black text-9xl italic tracking-tighter select-none pointer-events-none">
@@ -500,7 +372,6 @@ export const ProgressDashboard: React.FC = () => {
                 </div>
             </div>
         </div>
-      )}
     </div>
   );
 };
