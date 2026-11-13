@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Workout, ProgressState, WorkoutLog, WorkoutExercise, SessionFeedback } from '../../types/kinetix';
 import { soundService } from '../../services/soundService';
 import { storageService } from '../../services/storageService';
-import { aiService } from '../../services/aiService';
 import { EXERCISES_DB } from '../../constants/exercises';
 import { getYoutubeEmbedUrl } from '../../lib/youtube';
 import { UnitConverterModal } from '../ui/UnitConverterModal';
@@ -418,29 +417,31 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     setShowFeedback(true);
   };
 
-  const generateDebrief = async () => {
-    if (!aiService.isConfigured) {
-      setAiDebrief("Misión completada con éxito. Datos biométricos y tonelaje guardados localmente.");
-      return;
-    }
-    setIsAiProcessing(true);
-    const summary = progress.workoutLogs.map(l => `${l.exerciseId}: ${l.reps} reps @ ${l.weight}kg`).join(', ');
-    const query = `Analiza este entrenamiento táctico: ${summary}. Atleta reportó RPE ${feedback.rpe} y fatiga ${feedback.fatigue}. Da un debrief conciso estilo militar sobre el rendimiento, tonelaje alcanzado y una directriz de recuperación.`;
-    const response = await aiService.getTechnicalAdvice(query);
-    setAiDebrief(response);
-    setIsAiProcessing(false);
+  const generateDebrief = () => {
+    const setsCount = progress.workoutLogs.length;
+    const tonnageKg = Math.round(currentTonnage);
+    const recoveryTip = feedback.rpe >= 8
+      ? 'Carga exigente: prioriza 8h de sueño, hidratación con electrolitos e ingesta proteica post-entreno.'
+      : 'Carga controlada y eficiente: mantén buena hidratación y movilidad ligera para asimilar la sesión.';
+    setAiDebrief(
+      `RESUMEN KINETIX (Cierre Seguro)\n• Series completadas: ${setsCount}\n• Tonelaje acumulado: ${tonnageKg.toLocaleString()} kg\n• Esfuerzo reportado: RPE ${feedback.rpe}/10 · Fatiga ${feedback.fatigue}/5\n\nDirectriz Lic. Jorge González: ${recoveryTip}`
+    );
   };
+
+  const forensicStamp = `🔒 PROPIEDAD INTELECTUAL KINETIX • LIC. JORGE GONZÁLEZ • ${(user?.name || 'ATLETA').toUpperCase()} • ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
   return (
     <div 
       className="min-h-screen bg-[#050507] text-white pb-36 relative overflow-hidden select-none"
       onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
     >
-      {/* CAPA DISCRETA DE SEGURIDAD ANTIPIRATERÍA (FORENSIC WATERMARK) */}
-      <div className="fixed inset-0 pointer-events-none z-10 opacity-[0.065] overflow-hidden select-none flex flex-col justify-around rotate-[-18deg] scale-125">
-        {Array.from({ length: 6 }).map((_, idx) => (
-          <div key={idx} className="whitespace-nowrap text-[10px] font-mono font-bold tracking-[0.28em] text-white text-center">
-            🔒 PROPIEDAD INTELECTUAL KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ • {(user?.name || 'ATLETA').toUpperCase()}
+      {/* CAPA FORENSE ANTICAPTURA VISIBLE (PROPIEDAD INTELECTUAL) */}
+      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.14] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
+        {Array.from({ length: 8 }).map((_, idx) => (
+          <div key={idx} className={`whitespace-nowrap text-[10px] font-mono font-black tracking-[0.22em] text-center ${idx % 2 === 0 ? 'text-white' : 'text-red-500'}`}>
+            {forensicStamp}
           </div>
         ))}
       </div>
@@ -1002,10 +1003,9 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
 
                 <button 
                   onClick={generateDebrief}
-                  disabled={isAiProcessing}
-                  className="w-full py-6 bg-red-600 rounded-[24px] text-white font-black uppercase tracking-[0.4em] text-[10px] shadow-xl hover:bg-red-500 transition-all active:scale-95"
+                  className="w-full py-6 bg-red-600 rounded-[24px] text-white font-black uppercase tracking-[0.35em] text-[10px] shadow-xl hover:bg-red-500 transition-all active:scale-95"
                 >
-                  {isAiProcessing ? 'GENERANDO INFORME IA...' : 'CONTINUAR AL DEBRIEF ⚡'}
+                  FINALIZAR Y GUARDAR SESIÓN ✓
                 </button>
               </>
             )}

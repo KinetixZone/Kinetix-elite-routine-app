@@ -641,6 +641,18 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                   🏖️ Asignar Vacaciones
                 </button>
                 <button 
+                  onClick={() => {
+                    const todayTplId = calendarService.getScheduledSession(new Date(), selectedAthlete.id) || undefined;
+                    storageService.reopenSessionForAthlete(selectedAthlete.id, todayTplId);
+                    setToastMsg(`🔓 Sesión de hoy desbloqueada para ${selectedAthlete.name.split(' ')[0]}`);
+                    setTimeout(() => setToastMsg(null), 4000);
+                  }}
+                  className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 px-3.5 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
+                  title="Si el atleta cerró su rutina de hoy por error, desbloquéala aquí"
+                >
+                  <span>🔓</span> Reabrir Hoy
+                </button>
+                <button 
                   onClick={() => setShowCustomModal(true)}
                   className="bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 px-3.5 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
                   title="Clonar o diseñar una rutina exclusiva para este atleta y editar cargas libremente"

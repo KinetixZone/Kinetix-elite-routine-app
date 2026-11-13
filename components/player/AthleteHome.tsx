@@ -1,65 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Workout, PRRecord } from '../../types/kinetix';
 import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
 import { storageService } from '../../services/storageService';
-import { aiService } from '../../services/aiService';
-
-const TechnicalChatModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const [messages, setMessages] = useState<{role: 'user' | 'ai', text: string}[]>([
-        { role: 'ai', text: 'Asistente Técnico Kinetix en línea.\n\nResuelvo dudas sobre biomecánica, ejecución de ejercicios y uso de la app.' }
-    ]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [messages]);
-
-    const handleSend = async () => {
-        if (!input.trim()) return;
-        const userMsg = input.trim();
-        setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
-        setInput('');
-        setIsLoading(true);
-        const response = await aiService.getTechnicalAdvice(userMsg);
-        setMessages(prev => [...prev, { role: 'ai', text: response }]);
-        setIsLoading(false);
-    };
-
-    return (
-        <div className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-md flex items-end md:items-center justify-center p-0 md:p-6 animate-in slide-in-from-bottom-10 md:fade-in">
-            <div className="bg-[#0F0F11] w-full md:max-w-md h-[85vh] md:h-[600px] md:rounded-[32px] rounded-t-[32px] border border-cyan-500/20 shadow-2xl flex flex-col overflow-hidden relative">
-                <div className="p-5 border-b border-white/10 flex justify-between items-center bg-[#0F0F11]">
-                    <div>
-                        <h3 className="text-sm font-black uppercase tracking-wider text-white">Asistencia Técnica Kinetix</h3>
-                        <p className="text-[10px] font-bold text-cyan-400">Biomecánica & Técnica</p>
-                    </div>
-                    <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors">✕</button>
-                </div>
-                <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-gradient-to-b from-[#0F0F11] to-black">
-                    {messages.map((m, i) => (
-                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] p-4 rounded-2xl text-xs font-medium leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'bg-red-600/20 text-white border border-red-500/40 rounded-br-none' : 'bg-[#1A1A1D] text-white/85 border border-white/10 rounded-bl-none'}`}>
-                                {m.text}
-                            </div>
-                        </div>
-                    ))}
-                    {isLoading && <div className="flex justify-start"><div className="bg-[#1A1A1D] px-4 py-3 rounded-2xl rounded-bl-none border border-white/5 text-xs text-white/40">Analizando...</div></div>}
-                </div>
-                <div className="p-4 bg-[#0F0F11] border-t border-white/10">
-                    <div className="flex gap-2">
-                        <input type="text" className="flex-1 bg-black border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 outline-none placeholder-white/30" placeholder="Ej: ¿Cómo coloco la espalda en remo?" value={input} onChange={e => setInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSend()} />
-                        <button onClick={handleSend} disabled={!input.trim() || isLoading} className="bg-red-600 text-white w-12 rounded-xl flex items-center justify-center hover:bg-red-500 transition-colors">➤</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
+import { EXERCISES_DB } from '../../constants/exercises';
 
 interface Props {
   user: User;
@@ -68,6 +12,42 @@ interface Props {
   onStartSession: (workout: Workout) => void;
   onLogout: () => void;
 }
+
+const getWorkoutMuscleFocus = (workout?: Workout, loggedExerciseIds?: string[]): string => {
+  const catalog = [...EXERCISES_DB, ...storageService.getExercises()];
+  const groups: string[] = [];
+
+  if (workout && workout.exercises && workout.exercises.length > 0) {
+    workout.exercises.forEach(ex => {
+      const match = catalog.find(c => c.id === ex.exerciseId || c.name.toLowerCase() === ex.name.toLowerCase());
+      if (match?.muscleGroup) groups.push(match.muscleGroup);
+      else if (ex.name) groups.push(ex.name);
+    });
+  } else if (loggedExerciseIds && loggedExerciseIds.length > 0) {
+    loggedExerciseIds.forEach(id => {
+      const match = catalog.find(c => c.id === id);
+      if (match?.muscleGroup) groups.push(match.muscleGroup);
+    });
+  }
+
+  const text = `${workout?.category || ''} ${groups.join(' ')}`.toLowerCase();
+  const hasLeg = /pierna|cuádricep|cuadricep|isquio|femoral|glúteo|gluteo|pantorrilla|sentadilla|zancada|prensa|hip thrust|peso muerto/.test(text);
+  const hasPush = /pecho|pectoral|hombro|deltoide|tríceps|tricep|press|empuje|lagartija|elevación/.test(text);
+  const hasPull = /espalda|dorsal|bíceps|bicep|remo|jalón|dominada|tracción|curl/.test(text);
+  const hasArm = /bíceps|bicep|tríceps|tricep|brazo|antebrazo|curl|copa|extensión/.test(text);
+  const hasCore = /core|abdomen|abdominal|plancha|crunch/.test(text);
+  const hasCardio = /hiit|cardio|metabólico|metabolico|burpee|sprint|remoerg/.test(text);
+
+  if (hasLeg && (hasPush || hasPull)) return 'Cuerpo Completo (Full Body)';
+  if (hasLeg) return 'Pierna y Glúteo';
+  if (hasArm && !hasPush && !hasPull) return 'Brazo';
+  if (hasPush && hasPull) return 'Brazo y Torso Superior';
+  if (hasPush) return hasArm ? 'Pecho, Hombro y Brazo' : 'Pecho y Hombro';
+  if (hasPull) return hasArm ? 'Espalda y Brazo' : 'Espalda y Tracción';
+  if (hasCore && !hasCardio) return 'Core y Abdomen';
+  if (hasCardio) return 'Acondicionamiento / HIIT';
+  return 'Fuerza Funcional';
+};
 
 const METHOD_LABEL: Record<string, string> = {
   standard: 'Estándar',
@@ -86,7 +66,6 @@ const METHOD_LABEL: Record<string, string> = {
 
 export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSession, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'train' | 'progress' | 'profile'>('train');
-  const [showChat, setShowChat] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null);
   const [prsList] = useState<PRRecord[]>(() => storageService.getPRs());
   const [unitPref, setUnitPref] = useState<'kg' | 'lbs'>(user.preferredUnit || 'kg');
@@ -96,26 +75,31 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
 
   const todaySummary = useMemo(() => {
       const todayStr = new Date().toISOString().split('T')[0];
-      const todayLogs = storageService.getAllLogs().filter(l => l.timestamp && l.timestamp.startsWith(todayStr));
+      const todayLogs = storageService
+        .getAllLogs()
+        .filter(l => l.timestamp && l.timestamp.startsWith(todayStr) && (!l.athleteId || l.athleteId === user.id));
       const totalTonnage = todayLogs.reduce((acc, l) => acc + (Number(l.weight || 0) * Number(l.reps || 0)), 0);
       const totalSets = todayLogs.length;
-      const workoutName = todayLogs[0]?.workoutName || currentWorkout?.publicTitle || currentWorkout?.name || 'Sesión de Hoy';
       const rpe = todayLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
+      const muscleFocus = getWorkoutMuscleFocus(
+        !isWorkoutEmpty ? currentWorkout : undefined,
+        todayLogs.map(l => l.exerciseId)
+      );
       return {
           hasLogs: todayLogs.length > 0,
           tonnage: totalTonnage,
           sets: totalSets,
-          workoutName,
+          muscleFocus,
           rpe
       };
-  }, [currentWorkout, activeTab]);
+  }, [currentWorkout, isWorkoutEmpty, user.id, activeTab]);
 
   const completionStatus = useMemo(() => {
+      if (storageService.isSessionReopenedByCoach(user.id)) return { isDone: false, label: '' };
+      if (!isWorkoutEmpty && storageService.isSessionComplete(currentWorkout.id, user.id)) return { isDone: true, label: 'SESIÓN COMPLETADA' };
       if (todaySummary.hasLogs) return { isDone: true, label: 'SESIÓN COMPLETADA' };
-      if (isWorkoutEmpty) return { isDone: false, label: '' };
-      if (storageService.isSessionComplete(currentWorkout.id)) return { isDone: true, label: 'SESIÓN COMPLETADA' };
       return { isDone: false, label: '' };
-  }, [currentWorkout, isWorkoutEmpty, todaySummary.hasLogs]);
+  }, [currentWorkout, isWorkoutEmpty, todaySummary.hasLogs, user.id]);
 
   const workoutStats = useMemo(() => {
       if (isWorkoutEmpty) return { exCount: 0, totalSets: 0, estMinutes: 0 };
@@ -131,26 +115,34 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     const dayOfWeek = today.getDay();
     const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
     const monday = new Date(today.setDate(diffToMon));
+    const allLogs = storageService.getAllLogs();
     const week = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
         const dateStr = d.toISOString().split('T')[0];
         const tplId = calendarService.getScheduledSession(d, user.id);
-        const hasLogs = storageService.getAllLogs().some(l => l.timestamp.startsWith(dateStr));
+        const tpl = tplId ? storageService.getWorkoutById(tplId) : undefined;
+        const dayLogs = allLogs.filter(l => l.timestamp.startsWith(dateStr) && (!l.athleteId || l.athleteId === user.id));
+        const hasLogs = dayLogs.length > 0 || (dateStr === todayIso && completionStatus.isDone);
+        const focusLabel = tpl
+          ? getWorkoutMuscleFocus(tpl)
+          : dayLogs.length > 0
+          ? getWorkoutMuscleFocus(undefined, dayLogs.map(l => l.exerciseId))
+          : '';
         week.push({
           dayName: ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d.getDay()],
           dayNum: d.getDate(),
           dateStr,
           isToday: dateStr === todayIso,
+          isFuture: dateStr > todayIso,
           hasSession: !!tplId,
-          isDone: hasLogs
+          isDone: hasLogs,
+          focusLabel
         });
     }
     return week;
   }, [user.id, completionStatus.isDone]);
-
-  const systemConfig = storageService.getSystemConfig();
 
   const togglePreferredUnit = (u: 'kg' | 'lbs') => {
     setUnitPref(u);
@@ -158,16 +150,20 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     storageService.saveUser(updatedUser);
   };
 
+  const forensicStamp = `🔒 KINETIX • LIC. JORGE GONZÁLEZ • ${user.name.toUpperCase()} • ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
   return (
     <div 
       className="min-h-screen bg-[#050507] text-white relative overflow-x-hidden select-none"
       onContextMenu={(e) => e.preventDefault()}
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
     >
-      {/* MARCA DE AGUA FORENSE VISIBLE Y DISCRETA ANTICOPIA */}
-      <div className="fixed inset-0 pointer-events-none z-10 opacity-[0.065] overflow-hidden select-none flex flex-col justify-around rotate-[-18deg] scale-125">
-        {Array.from({ length: 6 }).map((_, idx) => (
-          <div key={idx} className="whitespace-nowrap text-[10px] font-mono font-bold tracking-[0.28em] text-white text-center">
-            🔒 PROPIEDAD INTELECTUAL KINETIX FUNCTIONAL ZONE • LIC. JORGE GONZÁLEZ • {user.name.toUpperCase()}
+      {/* MARCA DE AGUA FORENSE VISIBLE ANTICAPTURA */}
+      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.14] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
+        {Array.from({ length: 8 }).map((_, idx) => (
+          <div key={idx} className={`whitespace-nowrap text-[10px] font-mono font-black tracking-[0.22em] text-center ${idx % 2 === 0 ? 'text-white' : 'text-red-500'}`}>
+            {forensicStamp}
           </div>
         ))}
       </div>
@@ -242,15 +238,15 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                     </div>
 
                     {selectedDayIdx !== null && !weeklyHorizon[selectedDayIdx]?.isToday && (
-                      <div className="mt-3 p-3 rounded-2xl bg-black/60 border border-white/10 text-xs text-white/70 flex items-center justify-between">
+                      <div className="mt-3 p-3.5 rounded-2xl bg-black/70 border border-white/10 text-xs text-white/80 flex items-center justify-between gap-3">
                         <span>
                           {weeklyHorizon[selectedDayIdx].isDone
-                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Sesión completada y archivada.`
+                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Entrenaste ${weeklyHorizon[selectedDayIdx].focusLabel || 'tu sesión'} · Sesión completada y archivada.`
                             : weeklyHorizon[selectedDayIdx].hasSession
-                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Entrenamiento programado — se desbloquea ese día para proteger tu dosificación.`
+                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Toca ${weeklyHorizon[selectedDayIdx].focusLabel || 'Entrenamiento'} · Rutina bloqueada hasta ese día para proteger tu programación.`
                             : `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Día de recuperación programado.`}
                         </span>
-                        <button onClick={() => setSelectedDayIdx(null)} className="text-white/40 hover:text-white px-2">✕</button>
+                        <button onClick={() => setSelectedDayIdx(null)} className="text-white/40 hover:text-white px-2 shrink-0">✕</button>
                       </div>
                     )}
                  </section>
@@ -271,10 +267,10 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                             <div>
                                 <p className="text-xs font-black uppercase tracking-wider text-emerald-400">✓ Sesión Completada Hoy</p>
                                 <h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tight text-white mt-1">
-                                    {todaySummary.workoutName}
+                                    Hoy entrenaste: {todaySummary.muscleFocus}
                                 </h2>
                             </div>
-                            <span className="text-xs font-bold text-white/50">Archivada de forma segura</span>
+                            <span className="text-xs font-bold text-white/50">🔒 Cerrada de forma segura</span>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3">
@@ -298,9 +294,9 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                             </div>
                         </div>
 
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-xs text-white/75 leading-relaxed">
-                            <strong className="text-white block mb-1">🛡️ Protección Biomecánica & Metodología Lic. Jorge González</strong>
-                            Tu rutina de hoy ya quedó registrada y cerrada para evitar fatiga o acumulación externa de protocolos. Mañana se desbloqueará tu siguiente sesión.
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-xs text-white/75 leading-relaxed space-y-1">
+                            <strong className="text-white block">🛡️ Protección Metodológica · Lic. Jorge González</strong>
+                            <p>Tu rutina de hoy ya quedó registrada y bloqueada para evitar descargas o copias externas. Si cerraste la sesión por error, únicamente tu Coach puede desbloquearla.</p>
                         </div>
                     </div>
                  ) : isWorkoutEmpty ? (
@@ -395,18 +391,23 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                     </div>
                  )}
 
-                 {/* ASISTENTE BIOMECÁNICO */}
-                 {systemConfig.enableAI && user.isActive && (
-                     <button onClick={() => setShowChat(true)} className="w-full bg-[#0F0F11] border border-white/10 hover:border-cyan-500/40 p-5 rounded-3xl flex items-center justify-between transition-all">
+                 {/* SOPORTE DIRECTO CON COACH (SIN CONSUMO DE TOKENS IA) */}
+                 {user.isActive && (
+                     <a
+                       href={coachWhatsApp}
+                       target="_blank"
+                       rel="noreferrer"
+                       className="w-full bg-[#0F0F11] border border-white/10 hover:border-cyan-500/40 p-5 rounded-3xl flex items-center justify-between transition-all"
+                     >
                         <div className="flex items-center gap-4 text-left">
-                            <div className="w-11 h-11 bg-cyan-500/15 rounded-2xl flex items-center justify-center text-lg">💡</div>
+                            <div className="w-11 h-11 bg-emerald-500/15 rounded-2xl flex items-center justify-center text-lg">📲</div>
                             <div>
                                 <p className="text-xs font-black uppercase tracking-wider text-white">¿Dudas con algún ejercicio?</p>
-                                <p className="text-[11px] text-white/50">Consulta postura y técnica en tiempo real</p>
+                                <p className="text-[11px] text-white/50">Consulta directo con tu Coach por WhatsApp</p>
                             </div>
                         </div>
-                        <span className="text-cyan-400 font-black text-xs uppercase tracking-wider">Abrir →</span>
-                     </button>
+                        <span className="text-emerald-400 font-black text-xs uppercase tracking-wider">Escribir →</span>
+                     </a>
                  )}
 
                  {/* SELLO VISIBLEMENTE LEGIBLE DE PROPIEDAD INTELECTUAL */}
@@ -525,7 +526,6 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
           </button>
         </div>
       </nav>
-      {showChat && <TechnicalChatModal onClose={() => setShowChat(false)} />}
     </div>
   );
 };

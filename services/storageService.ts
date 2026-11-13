@@ -478,18 +478,46 @@ class StorageService {
     ];
   }
 
-  isSessionComplete(workoutId: string): boolean {
+  isSessionComplete(workoutId: string, athleteId?: string): boolean {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (athleteId) {
+      const reopened = localStorage.getItem(`kinetix_reopened_${athleteId}`);
+      if (reopened === todayStr) return false;
+      const locked = localStorage.getItem(`kinetix_locked_${athleteId}_${todayStr}`);
+      if (locked === workoutId) return true;
+    }
     const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
     const list = data ? JSON.parse(data) : [];
     return list.includes(workoutId);
   }
 
-  markSessionComplete(workoutId: string) {
+  isSessionReopenedByCoach(athleteId: string): boolean {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return localStorage.getItem(`kinetix_reopened_${athleteId}`) === todayStr;
+  }
+
+  markSessionComplete(workoutId: string, athleteId?: string) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (athleteId) {
+      localStorage.removeItem(`kinetix_reopened_${athleteId}`);
+      localStorage.setItem(`kinetix_locked_${athleteId}_${todayStr}`, workoutId);
+    }
     const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
     const list = data ? JSON.parse(data) : [];
     if (!list.includes(workoutId)) {
         list.push(workoutId);
         localStorage.setItem(KEYS.COMPLETED_SESSIONS, JSON.stringify(list));
+    }
+  }
+
+  reopenSessionForAthlete(athleteId: string, workoutId?: string) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    localStorage.setItem(`kinetix_reopened_${athleteId}`, todayStr);
+    localStorage.removeItem(`kinetix_locked_${athleteId}_${todayStr}`);
+    if (workoutId) {
+      const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
+      const list: string[] = data ? JSON.parse(data) : [];
+      localStorage.setItem(KEYS.COMPLETED_SESSIONS, JSON.stringify(list.filter(id => id !== workoutId)));
     }
   }
 

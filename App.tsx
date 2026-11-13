@@ -106,7 +106,7 @@ const App: React.FC = () => {
 
   const handleFinishWorkout = (progress: ProgressState) => {
     storageService.saveSessionLogs(progress.workoutLogs);
-    storageService.markSessionComplete(currentWorkout.id);
+    storageService.markSessionComplete(currentWorkout.id, user?.id);
     refreshWorkoutContext();
     setView(user?.role === 'client' ? 'athlete_home' : 'home');
   };
