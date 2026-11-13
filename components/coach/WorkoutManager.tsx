@@ -34,9 +34,12 @@ export const WorkoutManager: React.FC = () => {
   useEffect(() => { refreshData(); }, []);
 
   const refreshData = async () => {
-    const all = await storageService.getTemplates();
+    const [all, cloudAthletes] = await Promise.all([
+      storageService.getTemplates(),
+      storageService.syncAthletesFromCloud()
+    ]);
     setTemplates(all.filter(t => t.isTemplate !== false));
-    setAthletes(storageService.getAthletes());
+    setAthletes(cloudAthletes.filter(a => a.role !== 'owner'));
     setExerciseCount(storageService.getExercises().length);
   };
 
@@ -408,7 +411,7 @@ export const WorkoutManager: React.FC = () => {
                            <button type="button" onClick={() => setSelectedAthleteIds([])} className="text-[9px] font-black text-white/50 uppercase tracking-wider bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-all">Ninguno</button>
                        </div>
                    </div>
-                   <div className="bg-black border border-white/10 rounded-3xl p-4 max-h-48 overflow-y-auto custom-scrollbar space-y-2">
+                   <div className="bg-black border border-white/10 rounded-3xl p-4 max-h-52 overflow-y-auto custom-scrollbar space-y-2">
                        {athletes.map(a => {
                            const isSelected = selectedAthleteIds.includes(a.id);
                            return (
@@ -417,8 +420,13 @@ export const WorkoutManager: React.FC = () => {
                                    onClick={() => setSelectedAthleteIds(isSelected ? selectedAthleteIds.filter(id => id !== a.id) : [...selectedAthleteIds, a.id])}
                                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-red-600/15 border-red-600/50 text-white' : 'bg-white/[0.02] border-transparent hover:bg-white/5 text-white/60'}`}
                                >
-                                   <span className="text-xs font-bold uppercase">{a.name}</span>
-                                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${isSelected ? 'bg-red-600 border-red-600' : 'border-white/20'}`}>
+                                   <div className="min-w-0 pr-2">
+                                     <span className="text-xs font-bold uppercase block truncate">{a.name}</span>
+                                     <span className="text-[10px] font-mono text-cyan-400/80">
+                                       @{a.username || a.email.split('@')[0]} {a.isUnlimited ? '· ∞ Sin Corte' : ''} {a.isActive === false ? '· PAUSADO' : ''}
+                                     </span>
+                                   </div>
+                                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 ${isSelected ? 'bg-red-600 border-red-600' : 'border-white/20'}`}>
                                        {isSelected && <span className="text-[10px] font-bold text-white">✓</span>}
                                    </div>
                                </div>
@@ -427,6 +435,17 @@ export const WorkoutManager: React.FC = () => {
                    </div>
                </div>
                
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                   <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Fecha de Inicio</label>
+                   <input type="date" value={projConfig.startDate} onChange={e => setProjConfig({...projConfig, startDate: e.target.value})} className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-bold text-white" />
+                 </div>
+                 <div className="space-y-2">
+                   <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Duración (Semanas)</label>
+                   <input type="number" min={1} max={12} value={projConfig.weeks} onChange={e => setProjConfig({...projConfig, weeks: parseInt(e.target.value) || 1})} className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-bold text-white" />
+                 </div>
+               </div>
+
                <div className="space-y-3">
                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest block">Días Semanales</label>
                    <div className="flex justify-between gap-2">
@@ -439,13 +458,9 @@ export const WorkoutManager: React.FC = () => {
                </div>
 
                {view === 'meso' && (
-                 <div className="grid grid-cols-2 gap-3">
+                 <div className="grid grid-cols-1 gap-3">
                    <div>
-                     <label className="text-[9px] font-black uppercase text-white/40 block mb-1">Semanas</label>
-                     <input type="number" min={1} max={12} value={projConfig.weeks} onChange={e => setProjConfig({...projConfig, weeks: parseInt(e.target.value) || 4})} className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-bold text-white" />
-                   </div>
-                   <div>
-                     <label className="text-[9px] font-black uppercase text-white/40 block mb-1">Sobrecarga (+KG/sem)</label>
+                     <label className="text-[9px] font-black uppercase text-white/40 block mb-1">Sobrecarga Progresiva (+KG por semana)</label>
                      <input type="number" step="0.5" value={projConfig.incWeight} onChange={e => setProjConfig({...projConfig, incWeight: parseFloat(e.target.value) || 0})} className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm font-bold text-white" />
                    </div>
                  </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Workout, Goal, UserLevel, CalendarEvent, SessionFeedback, WorkoutExercise } from '../../types/kinetix';
-import { storageService } from '../../services/storageService';
+import { storageService, generateUsernameFromName } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
 
@@ -14,9 +14,12 @@ const AthleteFormModal: React.FC<{
     const [formData, setFormData] = useState<User>(athlete || {
         id: `ath-${Date.now()}`,
         name: '',
+        username: '',
         email: '',
-        password: 'kinetix.atleta',
+        password: `kinetix.${Math.floor(100 + Math.random() * 900)}`,
         role: 'client',
+        accessTier: 'regular',
+        isUnlimited: false,
         goal: Goal.PERFORMANCE,
         level: UserLevel.BEGINNER,
         daysPerWeek: 4,
@@ -31,6 +34,7 @@ const AthleteFormModal: React.FC<{
         medicalConditions: ''
     });
 
+    const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(!!athlete?.username);
     const [formError, setFormError] = useState<string | null>(null);
 
     const generateRandomPassword = () => {
@@ -38,21 +42,56 @@ const AthleteFormModal: React.FC<{
         setFormData({ ...formData, password: `kinetix.${rand}` });
     };
 
+    const handleNameChange = (val: string) => {
+        if (!usernameManuallyEdited) {
+            setFormData({ ...formData, name: val, username: generateUsernameFromName(val) });
+        } else {
+            setFormData({ ...formData, name: val });
+        }
+    };
+
+    const handleTierChange = (tier: 'regular' | 'personalizado' | 'vacaciones' | 'vip_sin_corte' | 'coach') => {
+        const isUnlimited = tier === 'vip_sin_corte' || tier === 'coach';
+        const role = tier === 'coach' ? 'coach' : 'client';
+        const medTag =
+          tier === 'personalizado' ? 'Personalizado Jorge Gonzalez' :
+          tier === 'vacaciones' ? 'Remoto / Vacaciones' :
+          tier === 'vip_sin_corte' ? 'VIP / Familia / Amigos (Sin Corte)' :
+          tier === 'coach' ? 'Staff Coach Kinetix' :
+          'Kinetix Presencial';
+        setFormData({
+          ...formData,
+          accessTier: tier,
+          role,
+          isUnlimited,
+          medicalConditions: medTag
+        });
+    };
+
     const handleSubmit = () => {
         if (!formData.name.trim()) {
             setFormError("El Nombre es obligatorio.");
             return;
         }
-        if (!formData.email.trim() || !formData.email.includes('@')) {
-            setFormError("El Email es obligatorio y debe ser válido.");
+        const cleanUser = (formData.username || generateUsernameFromName(formData.name)).trim().toLowerCase().replace(/\s+/g, '.').replace(/^@/, '');
+        if (!cleanUser || cleanUser.length < 2) {
+            setFormError("Ingresa un Usuario válido (mínimo 2 caracteres).");
             return;
         }
-        if (!formData.password?.trim()) {
-            setFormError("Debes asignar una Clave de Acceso para el atleta.");
+        if (!formData.password?.trim() || formData.password.trim().length < 4) {
+            setFormError("Debes asignar una Contraseña (mínimo 4 caracteres).");
             return;
         }
+        const cleanEmail = formData.email.trim()
+          ? formData.email.trim().toLowerCase()
+          : `${cleanUser}@kinetix.local`;
         setFormError(null);
-        onSave(formData);
+        onSave({
+          ...formData,
+          username: cleanUser,
+          email: cleanEmail,
+          password: formData.password.trim()
+        });
     };
 
     return (
@@ -61,10 +100,10 @@ const AthleteFormModal: React.FC<{
                 <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                     <div>
                         <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">
-                            {athlete ? 'Editar Perfil & Acceso' : 'Nuevo Atleta'}
+                            {athlete ? 'Editar Perfil & Acceso' : 'Nuevo Usuario / Atleta'}
                         </h2>
                         <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
-                            {athlete ? `ID: ${athlete.id}` : 'Alta de usuario y asignación de credenciales'}
+                            {athlete ? `ID: ${athlete.id}` : 'Usuario automático, contraseña editable y control de acceso'}
                         </p>
                     </div>
                     <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center text-white transition-colors">✕</button>
@@ -77,28 +116,94 @@ const AthleteFormModal: React.FC<{
                 )}
 
                 <div className="space-y-6">
+                    {/* TIPO DE PERFIL Y CORTE */}
+                    <div className="space-y-2">
+                        <label className="text-[9px] font-black text-cyan-400 uppercase tracking-widest block">Tipo de Perfil & Permisos</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                            {[
+                                { id: 'regular', label: 'Atleta Regular' },
+                                { id: 'personalizado', label: '⭐ Jorge 1-on-1' },
+                                { id: 'vacaciones', label: '🏖️ Vacaciones' },
+                                { id: 'vip_sin_corte', label: '∞ Familia / VIP' },
+                                { id: 'coach', label: '🛡️ Coach Staff' }
+                            ].map(t => {
+                                const active = (formData.accessTier || 'regular') === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => handleTierChange(t.id as any)}
+                                        className={`p-2.5 rounded-xl border text-[9px] font-black uppercase tracking-wider transition-all ${
+                                            active
+                                              ? t.id === 'vip_sin_corte' || t.id === 'coach'
+                                                ? 'bg-cyan-500 text-black border-cyan-400 shadow-lg'
+                                                : 'bg-red-600 text-white border-red-500 shadow-lg'
+                                              : 'bg-black/60 text-white/50 border-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        {t.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[9px] text-white/40">
+                            {formData.accessTier === 'vip_sin_corte'
+                              ? '∞ Perfil Sin Corte: Familia, amigos o invitados especiales. Nunca vence por fecha.'
+                              : formData.accessTier === 'coach'
+                              ? '🛡️ Coach: Puede diseñar y asignar rutinas y ver atletas. Sin acceso a Pagos ni Sistema.'
+                              : 'Cuenta estándar con control de fecha de corte y pausa manual.'}
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Nombre Completo *</label>
+                            <input type="text" className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-red-600 transition-colors" value={formData.name} onChange={e => handleNameChange(e.target.value)} placeholder="Ej: Ana García" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">
+                                {formData.isUnlimited ? 'Vigencia (Perfil Sin Corte ∞)' : 'Fin de Ciclo / Corte'}
+                            </label>
+                            {formData.isUnlimited ? (
+                                <div className="w-full bg-cyan-950/30 border border-cyan-500/30 rounded-xl p-3 text-cyan-300 font-black text-xs uppercase tracking-wider">
+                                    ∞ Permanente (Sin fecha de corte)
+                                </div>
+                            ) : (
+                                <input 
+                                    type="date" 
+                                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold focus:border-red-500 outline-none"
+                                    value={formData.cycleEndDate || ''}
+                                    onChange={e => setFormData({...formData, cycleEndDate: e.target.value})}
+                                />
+                            )}
+                        </div>
+                    </div>
+
                     {/* CREDENCIALES DE ACCESO */}
                     <div className="bg-red-950/20 p-5 rounded-3xl border border-red-600/30 space-y-4">
                         <div className="flex justify-between items-center">
                             <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">
-                                🔑 Credenciales de Acceso (App Atleta)
+                                🔑 Credenciales de Acceso (Usuario + Contraseña)
                             </p>
-                            <span className="text-[8px] text-white/30 uppercase">Login Directo</span>
+                            <span className="text-[8px] text-white/40 uppercase">El usuario puede editar su clave</span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Email (Login) *</label>
+                                <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Usuario (Login) *</label>
                                 <input 
-                                    type="email" 
-                                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-red-600 transition-colors" 
-                                    value={formData.email} 
-                                    onChange={e => setFormData({...formData, email: e.target.value})} 
-                                    placeholder="atleta@mail.com" 
+                                    type="text" 
+                                    className="w-full bg-black border border-cyan-500/40 rounded-xl p-3 text-cyan-300 font-mono font-bold outline-none focus:border-cyan-400 transition-colors" 
+                                    value={formData.username || ''} 
+                                    onChange={e => {
+                                      setUsernameManuallyEdited(true);
+                                      setFormData({...formData, username: e.target.value.toLowerCase().replace(/\s+/g, '.')});
+                                    }} 
+                                    placeholder="ej: ana.garcia" 
                                 />
                             </div>
                             <div className="space-y-1.5">
                                 <div className="flex justify-between items-center">
-                                    <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Clave Asignada *</label>
+                                    <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Contraseña *</label>
                                     <button 
                                         type="button" 
                                         onClick={generateRandomPassword}
@@ -115,25 +220,16 @@ const AthleteFormModal: React.FC<{
                                     placeholder="kinetix.atleta" 
                                 />
                             </div>
-                        </div>
-                        <p className="text-[8px] text-white/40 italic">
-                            * El atleta iniciará sesión introduciendo este correo y esta clave que tú le proporciones.
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Nombre Completo *</label>
-                            <input type="text" className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-red-600 transition-colors" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Ana García" />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-white/30 uppercase tracking-widest">Fin de Ciclo / Membresía</label>
-                            <input 
-                                type="date" 
-                                className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold focus:border-red-500 outline-none"
-                                value={formData.cycleEndDate || ''}
-                                onChange={e => setFormData({...formData, cycleEndDate: e.target.value})}
-                            />
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Email (Opcional)</label>
+                                <input 
+                                    type="email" 
+                                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-white font-bold outline-none focus:border-red-600 transition-colors" 
+                                    value={formData.email} 
+                                    onChange={e => setFormData({...formData, email: e.target.value})} 
+                                    placeholder="opcional@mail.com" 
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -170,7 +266,7 @@ const AthleteFormModal: React.FC<{
                 <div className="flex gap-4 mt-8 pt-6 border-t border-white/5">
                     <button onClick={onClose} className="flex-1 py-4 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest">Cancelar</button>
                     <button onClick={handleSubmit} className="flex-1 py-4 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
-                        {athlete ? 'Guardar Cambios' : 'Confirmar Alta'}
+                        {athlete ? 'Guardar Cambios' : 'Crear Perfil y Sincronizar'}
                     </button>
                 </div>
             </div>
@@ -180,11 +276,17 @@ const AthleteFormModal: React.FC<{
 
 const VenueSchedulerModal: React.FC<{ athlete: User; onClose: () => void; onApply: () => void }> = ({ athlete, onClose, onApply }) => {
     const [config, setConfig] = useState({ startDate: new Date().toISOString().split('T')[0], weeks: 4, days: [] as number[], mode: 'set_venue' as 'set_venue' | 'set_remote' });
-    const toggleDay = (d: number) => setConfig(prev => ({ ...prev, days: prev.days.includes(d) ? prev.days.filter(x => x !== d) : [...prev.days, d] }));
+    const [schedError, setSchedError] = useState<string | null>(null);
+    const toggleDay = (d: number) => {
+      setSchedError(null);
+      setConfig(prev => ({ ...prev, days: prev.days.includes(d) ? prev.days.filter(x => x !== d) : [...prev.days, d] }));
+    };
     const handleExecute = () => {
-        if (config.days.length === 0) return alert("Selecciona al menos un día.");
-        const updatedCount = calendarService.batchScheduleVenue(athlete.id, config.startDate, config.weeks, config.days, config.mode === 'set_venue');
-        if (updatedCount > 0) alert(`✅ Calendario Actualizado: ${updatedCount} días procesados.`);
+        if (config.days.length === 0) {
+          setSchedError("Selecciona al menos un día de la semana.");
+          return;
+        }
+        calendarService.batchScheduleVenue(athlete.id, config.startDate, config.weeks, config.days, config.mode === 'set_venue');
         onApply();
     };
     return (
@@ -212,6 +314,7 @@ const VenueSchedulerModal: React.FC<{ athlete: User; onClose: () => void; onAppl
                     <button onClick={onClose} className="flex-1 py-4 rounded-xl bg-white/5 text-[9px] font-black uppercase tracking-widest">Cancelar</button>
                     <button onClick={handleExecute} className="flex-1 py-4 rounded-xl bg-white text-black text-[9px] font-black uppercase tracking-widest shadow-lg">Confirmar</button>
                 </div>
+                {schedError && <p className="text-[10px] font-black text-red-400 text-center mt-3 uppercase">{schedError}</p>}
             </div>
         </div>
     );
@@ -311,7 +414,7 @@ interface Props {
 export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vacaciones' | 'expiring' | 'suspended'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vip' | 'coaches' | 'vacaciones' | 'expiring' | 'suspended'>('all');
   const [tab, setTab] = useState<'profile' | 'calendar' | 'history'>('profile'); 
   const [editingInstance, setEditingInstance] = useState<Workout | null>(null);
   const [clickedEvent, setClickedEvent] = useState<CalendarEvent | null>(null);
@@ -362,6 +465,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     setShowCustomModal(false);
   };
   const [athleteToEdit, setAthleteToEdit] = useState<User | null>(null);
+  const [confirmDeleteAthleteId, setConfirmDeleteAthleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const list = storageService.getAthletes();
@@ -370,6 +474,17 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       setSelectedAthlete(list[0]);
     }
     loadTemplates();
+    Promise.all([
+      storageService.syncAthletesFromCloud(),
+      calendarService.syncCalendarFromCloud(),
+      storageService.syncLogsFromCloud()
+    ]).then(([cloudAthletes]) => {
+      if (cloudAthletes && cloudAthletes.length > 0) {
+        setAthletes(cloudAthletes);
+        setSelectedAthlete(prev => prev ? (cloudAthletes.find(a => a.id === prev.id) || cloudAthletes[0]) : cloudAthletes[0]);
+        setCalendarTrigger(t => t + 1);
+      }
+    });
   }, []);
 
   const loadTemplates = async () => {
@@ -414,16 +529,18 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const filteredAthletes = useMemo(() => {
       return athletes.filter(a => {
           if (filter === 'all') return true;
-          if (filter === 'active') return a.isActive;
-          if (filter === 'suspended') return !a.isActive;
+          if (filter === 'active') return a.isActive !== false;
+          if (filter === 'suspended') return a.isActive === false;
+          if (filter === 'vip') return !!a.isUnlimited && a.role !== 'coach';
+          if (filter === 'coaches') return a.role === 'coach';
           if (filter === 'personalizados') {
-              return a.name.toLowerCase().includes('personalizad') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('personalizad'));
+              return a.accessTier === 'personalizado' || a.name.toLowerCase().includes('personalizad') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('personalizad'));
           }
           if (filter === 'vacaciones') {
-              return a.name.toLowerCase().includes('vacaciones') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('vacaciones'));
+              return a.accessTier === 'vacaciones' || a.name.toLowerCase().includes('vacaciones') || (a.medicalConditions && a.medicalConditions.toLowerCase().includes('vacaciones'));
           }
           if (filter === 'expiring') {
-              if (!a.cycleEndDate) return false;
+              if (a.isUnlimited || !a.cycleEndDate) return false;
               const diff = (new Date(a.cycleEndDate).getTime() - Date.now()) / (1000 * 3600 * 24);
               return diff <= 7 && diff >= 0;
           }
@@ -431,21 +548,33 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       });
   }, [athletes, filter]);
 
-  const handleUpdateUser = (updates: Partial<User>) => {
+  const handleUpdateUser = async (updates: Partial<User>) => {
       if (!selectedAthlete) return;
       const updated = { ...selectedAthlete, ...updates };
       setSelectedAthlete(updated);
       const newList = athletes.map(a => a.id === updated.id ? updated : a);
       setAthletes(newList);
-      storageService.saveAthletes(newList);
+      const res = await storageService.upsertAthleteCloud(updated);
+      setToastMsg(res.ok ? `Cambios guardados y sincronizados para ${updated.name.split(' ')[0]}` : `Guardado local (${res.error || 'revisa Supabase'})`);
+      setTimeout(() => setToastMsg(null), 3500);
   };
 
   const handleCopyAccess = () => {
     if (!selectedAthlete) return;
-    const text = `KINETIX APP LOGIN:\nEmail: ${selectedAthlete.email}\nClave: ${selectedAthlete.password || 'kinetix.atleta'}`;
+    const uname = selectedAthlete.username || generateUsernameFromName(selectedAthlete.name);
+    const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const text = `🏋️ ACCESO KINETIX FUNCTIONAL ZONE\nHola ${selectedAthlete.name.split(' ')[0]}, aquí está tu acceso:\n🔗 Link: ${appUrl}\n👤 Usuario: ${uname}\n🔑 Contraseña: ${selectedAthlete.password || 'kinetix.atleta'}\n(Puedes cambiar tu contraseña dentro de tu Perfil)`;
     navigator.clipboard.writeText(text);
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2500);
+  };
+
+  const getWhatsAppShareUrl = () => {
+    if (!selectedAthlete) return '#';
+    const uname = selectedAthlete.username || generateUsernameFromName(selectedAthlete.name);
+    const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const msg = `Hola ${selectedAthlete.name.split(' ')[0]} 👋 Aquí está tu acceso a Kinetix Functional Zone:\n\n🔗 ${appUrl}\n👤 Usuario: ${uname}\n🔑 Contraseña: ${selectedAthlete.password || 'kinetix.atleta'}\n\nAl entrar puedes cambiar tu contraseña en Perfil.`;
+    return `https://wa.me/?text=${encodeURIComponent(msg)}`;
   };
 
   const handlePropagateCurrentSession = async () => {
@@ -548,8 +677,11 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
              {[
                { id: 'all', label: 'Todos' },
                { id: 'personalizados', label: '⭐ Jorge 1-on-1' },
+               { id: 'vip', label: '∞ Sin Corte' },
+               { id: 'coaches', label: '🛡️ Coaches' },
                { id: 'vacaciones', label: '🏖️ Vacaciones' },
                { id: 'active', label: 'Activos' },
+               { id: 'suspended', label: 'Pausados' },
                { id: 'expiring', label: 'Por Vencer' }
              ].map(f => (
                <button 
@@ -563,18 +695,26 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
         </div>
         <div className="space-y-3 overflow-y-auto custom-scrollbar h-[calc(100vh-290px)]">
           {filteredAthletes.map(athlete => (
-             <div key={athlete.id} onClick={() => setSelectedAthlete(athlete)} className={`p-5 rounded-[24px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
-                <div className="flex justify-between items-start">
-                    <h3 className="text-xl font-black uppercase italic tracking-tight mb-1">{athlete.name}</h3>
-                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${athlete.isActive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                        {athlete.isActive ? 'Activo' : 'Pausado'}
-                    </span>
+             <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-5 rounded-[24px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
+                <div className="flex justify-between items-start gap-2">
+                    <h3 className="text-lg font-black uppercase italic tracking-tight mb-0.5 truncate">{athlete.name}</h3>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {athlete.role === 'coach' && (
+                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-purple-500/20 text-purple-400">COACH</span>
+                      )}
+                      {athlete.isUnlimited && athlete.role !== 'coach' && (
+                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-cyan-500/20 text-cyan-400">∞ SIN CORTE</span>
+                      )}
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${athlete.isActive !== false ? 'bg-green-500/10 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                          {athlete.isActive !== false ? 'Activo' : 'Pausado'}
+                      </span>
+                    </div>
                 </div>
-                <p className="text-[10px] opacity-50 font-bold uppercase">{athlete.email}</p>
+                <p className="text-[10px] opacity-60 font-mono font-bold">@{athlete.username || generateUsernameFromName(athlete.name)}</p>
                 <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
-                   <span className="text-[8px] font-mono text-red-600/70">Clave: {athlete.password || 'kinetix.atleta'}</span>
+                   <span className="text-[8px] font-mono text-red-500/80">Clave: {athlete.password || 'kinetix.atleta'}</span>
                    {athlete.medicalConditions && (
-                     <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/80 bg-cyan-950/40 px-2 py-0.5 rounded-md">
+                     <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/90 bg-cyan-950/50 px-2 py-0.5 rounded-md truncate max-w-[140px]">
                        {athlete.medicalConditions}
                      </span>
                    )}
@@ -684,41 +824,112 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               {tab === 'profile' && (
                  <div className="space-y-6">
                     {/* CREDENCIALES DE ACCESO DEL ATLETA */}
-                    <div className="bg-[#151518] rounded-3xl p-6 border border-red-500/20 space-y-3">
-                        <div className="flex justify-between items-center">
+                    <div className="bg-[#151518] rounded-3xl p-6 border border-red-500/20 space-y-4">
+                        <div className="flex flex-wrap justify-between items-center gap-2">
                             <div>
-                                <h3 className="text-base font-black uppercase italic text-red-500">Credenciales de Login del Atleta</h3>
-                                <p className="text-[9px] text-white/40 uppercase">El atleta entra con estos datos a su app</p>
+                                <h3 className="text-base font-black uppercase italic text-red-500">Credenciales y Control Total</h3>
+                                <p className="text-[9px] text-white/40 uppercase">Controlado por Dueños/Coaches · El usuario puede cambiar su contraseña</p>
                             </div>
-                            <span className="text-[8px] bg-red-600/20 text-red-400 font-mono px-2.5 py-1 rounded-full uppercase font-black">
-                                {selectedAthlete.role}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[8px] font-mono px-2.5 py-1 rounded-full uppercase font-black ${selectedAthlete.isUnlimited ? 'bg-cyan-500/20 text-cyan-300' : 'bg-red-600/20 text-red-400'}`}>
+                                    {selectedAthlete.role === 'coach' ? '🛡️ COACH' : selectedAthlete.isUnlimited ? '∞ SIN CORTE' : 'REGULAR'}
+                                </span>
+                                <a
+                                  href={getWhatsAppShareUrl()}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1 rounded-full bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-[9px] font-black uppercase tracking-wider transition-all"
+                                >
+                                  📲 Enviar Acceso
+                                </a>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                             <div className="bg-black/60 p-3 rounded-2xl border border-white/5 space-y-1">
-                                <span className="text-[8px] font-black uppercase text-white/30">Email de Entrada:</span>
-                                <p className="text-xs font-mono font-bold text-white select-all">{selectedAthlete.email}</p>
+                                <span className="text-[8px] font-black uppercase text-white/30">Usuario de Login:</span>
+                                <p className="text-xs font-mono font-bold text-cyan-300 select-all">@{selectedAthlete.username || generateUsernameFromName(selectedAthlete.name)}</p>
                             </div>
                             <div className="bg-black/60 p-3 rounded-2xl border border-white/5 space-y-1">
-                                <span className="text-[8px] font-black uppercase text-white/30">Clave Asignada:</span>
+                                <span className="text-[8px] font-black uppercase text-white/30">Contraseña Actual:</span>
                                 <p className="text-xs font-mono font-bold text-red-400 select-all">{selectedAthlete.password || 'kinetix.atleta'}</p>
                             </div>
+                            <div className="bg-black/60 p-3 rounded-2xl border border-white/5 space-y-1">
+                                <span className="text-[8px] font-black uppercase text-white/30">Email:</span>
+                                <p className="text-xs font-mono font-bold text-white/70 truncate select-all">{selectedAthlete.email}</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="bg-[#1A1A1D] rounded-3xl p-6 border border-white/5 flex items-center justify-between">
+                    <div className="bg-[#1A1A1D] rounded-3xl p-6 border border-white/5 flex flex-wrap items-center justify-between gap-4">
                         <div>
-                            <h3 className="text-lg font-black uppercase italic">Estado de Membresía</h3>
-                            <p className="text-[10px] opacity-40 uppercase">Habilitar o pausar acceso a la plataforma</p>
+                            <h3 className="text-lg font-black uppercase italic">
+                              {selectedAthlete.isActive !== false ? '✅ Acceso Activo' : '⛔ Acceso Pausado'}
+                            </h3>
+                            <p className="text-[10px] opacity-50 uppercase">Pausa o reactiva su entrada a la app en tiempo real</p>
                         </div>
-                        <div onClick={() => handleUpdateUser({ isActive: !selectedAthlete.isActive })} className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors ${selectedAthlete.isActive ? 'bg-green-600' : 'bg-red-600'}`}>
-                            <div className={`w-6 h-6 bg-white rounded-full transition-all ${selectedAthlete.isActive ? 'translate-x-6' : ''}`} />
+                        <div className="flex items-center gap-4">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateUser({ isUnlimited: !selectedAthlete.isUnlimited, accessTier: !selectedAthlete.isUnlimited ? 'vip_sin_corte' : 'regular' })}
+                              className={`px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all ${
+                                selectedAthlete.isUnlimited
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                  : 'bg-white/5 text-white/50 border-white/10 hover:text-white'
+                              }`}
+                            >
+                              {selectedAthlete.isUnlimited ? '∞ Sin Corte Activo' : 'Activar Sin Corte'}
+                            </button>
+                            <div onClick={() => handleUpdateUser({ isActive: selectedAthlete.isActive === false })} className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors ${selectedAthlete.isActive !== false ? 'bg-green-600' : 'bg-red-600'}`}>
+                                <div className={`w-6 h-6 bg-white rounded-full transition-all ${selectedAthlete.isActive !== false ? 'translate-x-6' : ''}`} />
+                            </div>
                         </div>
                     </div>
 
-                    <div className="bg-black/20 rounded-3xl p-6 border border-white/5 space-y-4">
-                        <label className="text-[9px] font-black opacity-30 uppercase tracking-widest">Fin de Membresía</label>
-                        <input type="date" className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-bold" value={selectedAthlete.cycleEndDate || ''} onChange={e => handleUpdateUser({ cycleEndDate: e.target.value })} />
+                    <div className="bg-black/20 rounded-3xl p-6 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex-1 min-w-[200px] space-y-2">
+                            <label className="text-[9px] font-black opacity-40 uppercase tracking-widest block">
+                              {selectedAthlete.isUnlimited ? 'Vigencia (Perfil Sin Corte ∞)' : 'Fecha de Corte / Fin de Membresía'}
+                            </label>
+                            {selectedAthlete.isUnlimited ? (
+                              <p className="text-xs font-black text-cyan-400">∞ Sin fecha de vencimiento (Familia / Amigos / VIP / Staff)</p>
+                            ) : (
+                              <input type="date" className="w-full bg-black border border-white/10 rounded-xl p-4 text-white font-bold" value={selectedAthlete.cycleEndDate || ''} onChange={e => handleUpdateUser({ cycleEndDate: e.target.value })} />
+                            )}
+                        </div>
+                        {confirmDeleteAthleteId === selectedAthlete.id ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await storageService.deleteAthleteCloud(selectedAthlete.id);
+                                const remaining = athletes.filter(a => a.id !== selectedAthlete.id);
+                                setAthletes(remaining);
+                                setSelectedAthlete(remaining[0] || null);
+                                setConfirmDeleteAthleteId(null);
+                                setToastMsg('Perfil eliminado de la plataforma.');
+                                setTimeout(() => setToastMsg(null), 3000);
+                              }}
+                              className="px-4 py-2.5 bg-red-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider"
+                            >
+                              Confirmar Baja
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteAthleteId(null)}
+                              className="px-3 py-2.5 bg-white/10 text-white rounded-xl text-[9px] font-black uppercase"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAthleteId(selectedAthlete.id)}
+                            className="px-4 py-2.5 bg-red-950/40 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                          >
+                            🗑 Eliminar Perfil
+                          </button>
+                        )}
                     </div>
 
                     {/* CONTROL DE MESOCICLO & ADHERENCIA */}
@@ -900,14 +1111,16 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
         <AthleteFormModal 
           athlete={athleteToEdit} 
           onClose={() => setShowFormModal(false)} 
-          onSave={(u) => {
+          onSave={async (u) => {
             let newList = [...athletes];
             if (athleteToEdit) newList = newList.map(a => a.id === u.id ? u : a);
             else newList.push(u);
             setAthletes(newList);
-            storageService.saveAthletes(newList);
+            const res = await storageService.upsertAthleteCloud(u);
             setShowFormModal(false);
             setSelectedAthlete(u);
+            setToastMsg(res.ok ? `Usuario @${u.username} guardado y sincronizado en la nube ✓` : `Guardado local (${res.error || 'revisa Supabase'})`);
+            setTimeout(() => setToastMsg(null), 4000);
           }} 
         />
       )}
@@ -946,16 +1159,16 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                       </button>
                       <button 
                         onClick={() => {
-                          if (confirm("¿Seguro que deseas eliminar esta rutina de este día?")) {
-                              if (clickedEvent) {
-                                  calendarService.deleteEvent(clickedEvent.id);
-                              } else {
-                                  calendarService.clearDaySessions(selectedAthlete!.id, editingInstance.scheduledDate!);
-                              }
-                              setCalendarTrigger(prev => prev + 1);
-                              setEditingInstance(null);
-                              setClickedEvent(null);
+                          if (clickedEvent) {
+                              calendarService.deleteEvent(clickedEvent.id);
+                          } else {
+                              calendarService.clearDaySessions(selectedAthlete!.id, editingInstance.scheduledDate!);
                           }
+                          setCalendarTrigger(prev => prev + 1);
+                          setEditingInstance(null);
+                          setClickedEvent(null);
+                          setToastMsg("Rutina del día eliminada.");
+                          setTimeout(() => setToastMsg(null), 3000);
                         }} 
                         className="px-4 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/30 rounded-xl text-[9px] uppercase font-black transition-colors"
                       >
@@ -985,7 +1198,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                           setCalendarTrigger(prev => prev + 1);
                           setEditingInstance(null);
                           setClickedEvent(null);
-                          alert("✅ Cambios de la rutina guardados correctamente para este atleta.");
+                          setToastMsg("Cambios guardados y sincronizados para este atleta.");
+                          setTimeout(() => setToastMsg(null), 3500);
                         }} 
                         className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-[9px] uppercase font-black shadow-lg transition-all"
                       >

@@ -4,6 +4,7 @@ import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
 import { storageService } from '../../services/storageService';
 import { EXERCISES_DB } from '../../constants/exercises';
+import { PWAInstallButton } from '../ui/PWAInstallButton';
 
 interface Props {
   user: User;
@@ -11,6 +12,7 @@ interface Props {
   availableWorkouts: Workout[];
   onStartSession: (workout: Workout) => void;
   onLogout: () => void;
+  onUserUpdate?: (u: User) => void;
 }
 
 const getWorkoutMuscleFocus = (workout?: Workout, loggedExerciseIds?: string[]): string => {
@@ -64,11 +66,37 @@ const METHOD_LABEL: Record<string, string> = {
   superset: 'Superserie'
 };
 
-export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSession, onLogout }) => {
+export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSession, onLogout, onUserUpdate }) => {
   const [activeTab, setActiveTab] = useState<'train' | 'progress' | 'profile'>('train');
   const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null);
   const [prsList] = useState<PRRecord[]>(() => storageService.getPRs());
   const [unitPref, setUnitPref] = useState<'kg' | 'lbs'>(user.preferredUnit || 'kg');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isSavingPwd, setIsSavingPwd] = useState(false);
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPwd.trim().length < 4) {
+      return setPwdMsg({ ok: false, text: 'La contraseña debe tener al menos 4 caracteres.' });
+    }
+    if (newPwd.trim() !== confirmPwd.trim()) {
+      return setPwdMsg({ ok: false, text: 'Las contraseñas no coinciden.' });
+    }
+    setIsSavingPwd(true);
+    const res = await storageService.updateUserPassword(user.id, newPwd.trim());
+    setIsSavingPwd(false);
+    if (res.ok) {
+      const updated = { ...user, password: newPwd.trim() };
+      onUserUpdate?.(updated);
+      setNewPwd('');
+      setConfirmPwd('');
+      setPwdMsg({ ok: true, text: '✓ Contraseña actualizada y sincronizada.' });
+    } else {
+      setPwdMsg({ ok: false, text: res.error || 'No se pudo actualizar.' });
+    }
+  };
 
   const coachWhatsApp = "https://wa.me/525627303189";
   const isWorkoutEmpty = !currentWorkout || currentWorkout.id === 'empty-state' || currentWorkout.exercises.length === 0;
@@ -188,7 +216,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 text-xs font-bold">
+          <div className="flex items-center gap-2 shrink-0 text-xs font-bold">
+            <PWAInstallButton compact />
             <span className="text-cyan-400 tabular-nums">🔥 {user.streak || 0} días</span>
             <button 
               onClick={() => setActiveTab('profile')}
@@ -432,9 +461,58 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                      </div>
                      <div className="text-center sm:text-left">
                        <h2 className="text-2xl font-black uppercase italic tracking-tight text-white">{user.name}</h2>
-                       <p className="text-xs text-white/60 mt-0.5">{user.level} · {user.goal} · {user.email}</p>
+                       <p className="text-xs text-white/60 mt-0.5">
+                         <span className="font-mono text-cyan-400">@{user.username || user.email.split('@')[0]}</span> · {user.level} · {user.goal}
+                       </p>
                      </div>
                  </div>
+
+                  {/* SEGURIDAD Y CONTRASEÑA EDITABLE POR EL USUARIO */}
+                  <div className="bg-[#0F0F11] border border-white/10 rounded-3xl p-6 space-y-4">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-white">Acceso y Contraseña</h3>
+                        <p className="text-xs text-white/50">
+                          Usuario: <span className="font-mono text-cyan-400 font-bold">@{user.username || user.email.split('@')[0]}</span>
+                        </p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase ${user.isUnlimited ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'bg-white/5 text-white/60 border border-white/10'}`}>
+                        {user.isUnlimited ? '∞ Acceso Sin Corte' : user.cycleEndDate ? `Vigencia: ${user.cycleEndDate}` : 'Activo'}
+                      </span>
+                    </div>
+
+                    <form onSubmit={handlePasswordChange} className="space-y-3 pt-2 border-t border-white/10">
+                      <p className="text-[11px] font-bold text-white/60">Cambiar mi contraseña personal:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          type="password"
+                          value={newPwd}
+                          onChange={e => setNewPwd(e.target.value)}
+                          placeholder="Nueva contraseña (mín. 4)"
+                          className="w-full bg-black border border-white/15 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-cyan-500"
+                        />
+                        <input
+                          type="password"
+                          value={confirmPwd}
+                          onChange={e => setConfirmPwd(e.target.value)}
+                          placeholder="Confirmar nueva contraseña"
+                          className="w-full bg-black border border-white/15 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-cyan-500"
+                        />
+                      </div>
+                      {pwdMsg && (
+                        <p className={`text-xs font-bold ${pwdMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {pwdMsg.text}
+                        </p>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={isSavingPwd || !newPwd.trim()}
+                        className="px-5 py-2.5 bg-white text-black hover:bg-cyan-400 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-40"
+                      >
+                        {isSavingPwd ? 'Guardando...' : 'Actualizar Contraseña'}
+                      </button>
+                    </form>
+                  </div>
 
                  {/* PREFERENCIA DE UNIDADES Y APP EXTERNA DE MEDIDAS */}
                  <div className="bg-[#0F0F11] border border-white/10 rounded-3xl p-6 space-y-4">
@@ -489,6 +567,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                  </div>
 
                  <div className="bg-[#0F0F11] border border-white/10 rounded-3xl p-6 space-y-3">
+                    <PWAInstallButton />
                     <a href={coachWhatsApp} target="_blank" rel="noreferrer" className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center gap-2 rounded-2xl text-xs font-black uppercase tracking-wider transition-colors">
                         Contactar a mi Coach 📲
                     </a>

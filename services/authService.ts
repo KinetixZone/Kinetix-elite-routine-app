@@ -11,35 +11,49 @@ class AuthService {
         'leslie23tr@gmail.com'
     ];
     
+    private readonly OWNER_USERNAMES = ['leslie', 'jorge', 'leslie.barrera', 'jorge.gonzalez'];
+
     // Validación de Master Key para acceso Admin / Coach
     private getMasterKey(): string {
         return (typeof process !== 'undefined' && process.env?.ADMIN_MASTER_KEY) || 'kinetix.2302';
     }
 
-    isAdminEmail(email: string): boolean {
-        if (!email) return false;
-        return this.ADMIN_EMAILS.includes(email.trim().toLowerCase());
+    private normalizeIdentifier(identifier: string): string {
+        return (identifier || '').trim().toLowerCase().replace(/^@/, '');
     }
 
-    async requestAccess(email: string, password?: string): Promise<{ success: boolean, error: string | null }> {
-        const emailLower = email.trim().toLowerCase();
+    isAdminEmail(identifier: string): boolean {
+        if (!identifier) return false;
+        const id = this.normalizeIdentifier(identifier);
+        return this.ADMIN_EMAILS.includes(id) || this.OWNER_USERNAMES.includes(id);
+    }
+
+    private findUserByIdentifier(list: User[], identifier: string): User | undefined {
+        const id = this.normalizeIdentifier(identifier);
+        return list.find(u =>
+            u.email.toLowerCase() === id ||
+            (u.username && u.username.toLowerCase() === id)
+        );
+    }
+
+    async requestAccess(identifier: string, password?: string): Promise<{ success: boolean, error: string | null }> {
+        const idLower = this.normalizeIdentifier(identifier);
         const pwdClean = (password || '').trim();
 
-        const athletes = storageService.getAthletes();
-        const staff = storageService.getStaff();
-        
-        const isOwner = this.isAdminEmail(emailLower);
-        const staffMember = staff.find(s => s.email.toLowerCase() === emailLower);
-        const athlete = athletes.find(a => a.email.toLowerCase() === emailLower);
+        const isOwner = this.isAdminEmail(idLower);
 
-        if (!isOwner && !staffMember && !athlete) {
+        // Sincronizar catálogo real de usuarios desde Supabase antes de validar (Multi-dispositivo)
+        const athletes = await storageService.syncAthletesFromCloud();
+        const account = this.findUserByIdentifier(athletes, idLower);
+
+        if (!isOwner && !account) {
             return { 
                 success: false, 
-                error: "EMAIL NO REGISTRADO. SOLICITA ALTA A TU COACH KINETIX" 
+                error: "USUARIO O EMAIL NO REGISTRADO. SOLICITA ALTA A TU COACH KINETIX." 
             };
         }
 
-        // Validación de Administrador / Head Coach (Leslie & Jorge)
+        // Validación de Dueños (Leslie & Jorge)
         if (isOwner) {
             if (!pwdClean) return { success: false, error: "CLAVE MAESTRA REQUERIDA" };
             const validMasterKeys = [
@@ -51,34 +65,35 @@ class AuthService {
                 'kinetix123'
             ];
             if (!validMasterKeys.includes(pwdClean)) {
-                return { success: false, error: "CLAVE MAESTRA INCORRECTA (Usa: kinetix.2302)" };
+                return { success: false, error: "CLAVE MAESTRA INCORRECTA" };
             }
             return { success: true, error: null };
         }
 
-        // Validación de Staff
-        if (staffMember) {
-            const expectedStaffPwd = staffMember.password || 'kinetix.staff';
-            if (!pwdClean) return { success: false, error: "CLAVE DE ACCESO REQUERIDA" };
-            if (pwdClean !== expectedStaffPwd && pwdClean !== this.getMasterKey()) {
-                return { success: false, error: "CLAVE DE ACCESO INCORRECTA" };
+        // Validación de Coach o Atleta (con control de pausa y corte)
+        if (account) {
+            if (account.isActive === false) {
+                return { success: false, error: "ACCESO PAUSADO POR ADMINISTRACIÓN. CONTACTA A TU COACH." };
             }
-            return { success: true, error: null };
-        }
 
-        // Validación de Atleta: Login con Email y Clave asignada por el Coach
-        if (athlete) {
-            if (!athlete.isActive && athlete.isActive !== undefined) {
-                return { success: false, error: "MEMBRESÍA O ACCESO SUSPENDIDO. CONTACTA A TU COACH." };
+            // Verificar fecha de corte solo para cuentas con vencimiento (NO aplica a Sin Corte / VIP / Familia / Amigos / Coaches)
+            if (!account.isUnlimited && account.role === 'client' && account.cycleEndDate) {
+                const todayIso = new Date().toISOString().split('T')[0];
+                if (account.cycleEndDate < todayIso) {
+                    return {
+                        success: false,
+                        error: `MEMBRESÍA VENCIDA (${account.cycleEndDate}). RENUEVA TU ACCESO CON TU COACH.`
+                    };
+                }
             }
-            const expectedPwd = athlete.password || 'kinetix.atleta';
-            if (!pwdClean) return { success: false, error: "INGRESA LA CLAVE ASIGNADA POR TU COACH" };
-            
-            // Permitir la clave del atleta o la clave maestra del coach
-            if (pwdClean !== expectedPwd && pwdClean !== this.getMasterKey() && pwdClean !== 'kinetix123') {
+
+            const expectedPwd = account.password || (account.role === 'coach' ? 'kinetix.coach' : 'kinetix.atleta');
+            if (!pwdClean) return { success: false, error: "INGRESA TU CONTRASEÑA DE ACCESO" };
+
+            if (pwdClean !== expectedPwd && pwdClean !== this.getMasterKey()) {
                 return { 
                     success: false, 
-                    error: "CLAVE INCORRECTA. VERIFICA CON TU ENTRENADOR." 
+                    error: "CONTRASEÑA INCORRECTA. VERIFICA CON TU ENTRENADOR." 
                 };
             }
             return { success: true, error: null };
@@ -87,22 +102,23 @@ class AuthService {
         return { success: false, error: "CREDENCIALES INVÁLIDAS" };
     }
 
-    async finalizeLogin(email: string): Promise<User | null> {
+    async finalizeLogin(identifier: string): Promise<User | null> {
         const athletes = storageService.getAthletes();
-        const staff = storageService.getStaff();
-        const emailLower = email.trim().toLowerCase();
+        const idLower = this.normalizeIdentifier(identifier);
 
-        if (this.isAdminEmail(emailLower)) {
-            const isLeslie = emailLower === 'leslie23tr@gmail.com' || emailLower === 'les_barrera@outlook.com';
+        if (this.isAdminEmail(idLower)) {
+            const isLeslie = idLower === 'leslie23tr@gmail.com' || idLower === 'les_barrera@outlook.com' || idLower === 'leslie' || idLower === 'leslie.barrera';
             const ownerName = isLeslie 
                 ? 'Leslie Barrera (Coach & Dueña)' 
                 : 'Jorge González (Head Coach & Dueño)';
 
             const owner: User = {
-                id: `owner-${emailLower.split('@')[0]}`,
+                id: `owner-${idLower.split('@')[0]}`,
                 name: ownerName,
-                email: emailLower,
+                username: isLeslie ? 'leslie' : 'jorge',
+                email: idLower.includes('@') ? idLower : (isLeslie ? 'leslie23tr@gmail.com' : 'jorge02gonzalez@outlook.com'),
                 role: 'owner',
+                isUnlimited: true,
                 goal: 'Rendimiento' as any,
                 level: 'Avanzado' as any,
                 daysPerWeek: 7,
@@ -115,16 +131,10 @@ class AuthService {
             return owner;
         }
 
-        const staffMember = staff.find(s => s.email.toLowerCase() === emailLower);
-        if (staffMember) {
-            storageService.saveUser(staffMember);
-            return staffMember;
-        }
-
-        const athlete = athletes.find(a => a.email.toLowerCase() === emailLower);
-        if (athlete) {
-            storageService.saveUser(athlete);
-            return athlete;
+        const account = this.findUserByIdentifier(athletes, idLower);
+        if (account) {
+            storageService.saveUser(account);
+            return account;
         }
 
         return null;

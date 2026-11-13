@@ -51,7 +51,9 @@ export interface PRRecord {
 export interface User {
   id: string; 
   name: string; 
+  username?: string;
   email: string; 
+  phone?: string;
   goal: Goal; 
   level: UserLevel; 
   role: UserRole;
@@ -61,6 +63,8 @@ export interface User {
   streak: number;
   createdAt: string; 
   isActive?: boolean; 
+  isUnlimited?: boolean; // Perfiles sin corte (Familia, Amigos, VIP, Coaches)
+  accessTier?: 'regular' | 'personalizado' | 'vacaciones' | 'vip_sin_corte' | 'coach';
   coachId?: string;
   lastPrDate?: string;
   complianceRate?: number; 

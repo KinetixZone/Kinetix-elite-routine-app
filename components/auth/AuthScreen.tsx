@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { authService } from '../../services/authService';
 import { storageService } from '../../services/storageService';
 import { User } from '../../types/kinetix';
+import { PWAInstallButton } from '../ui/PWAInstallButton';
 
 interface Props {
     onLoginSuccess: (user: User) => void;
@@ -10,17 +11,18 @@ interface Props {
 export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [status, setStatus] = useState<'idle' | 'loading' | 'sent'>('idle');
     const [error, setError] = useState<string | null>(null);
 
     const isAdminMode = useMemo(() => authService.isAdminEmail(email), [email]);
     const isLeslie = useMemo(() => {
-        const e = email.trim().toLowerCase();
-        return e === 'leslie23tr@gmail.com' || e === 'les_barrera@outlook.com';
+        const e = email.trim().toLowerCase().replace(/^@/, '');
+        return e === 'leslie23tr@gmail.com' || e === 'les_barrera@outlook.com' || e === 'leslie' || e === 'leslie.barrera';
     }, [email]);
     const isJorge = useMemo(() => {
-        const e = email.trim().toLowerCase();
-        return e === 'jorge02gonzalez@outlook.com' || e.includes('kinetixzone');
+        const e = email.trim().toLowerCase().replace(/^@/, '');
+        return e === 'jorge02gonzalez@outlook.com' || e === 'jorge' || e === 'jorge.gonzalez' || e.includes('kinetixzone');
     }, [email]);
 
     const branding = storageService.getBranding();
@@ -48,11 +50,11 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
 
     const handleAccessRequest = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!email.trim() || !email.includes('@')) {
-            return setError("INGRESA UN EMAIL VÁLIDO");
+        if (!email.trim()) {
+            return setError("INGRESA TU USUARIO O CORREO");
         }
         if (!password.trim()) {
-            return setError("INGRESA TU CLAVE DE ACCESO");
+            return setError("INGRESA TU CONTRASEÑA DE ACCESO");
         }
         await executeLogin(email, password);
     };
@@ -121,12 +123,14 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                     <div className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="text-[8px] font-black uppercase text-white/40 tracking-[0.2em] block pl-1">
-                                Correo Electrónico
+                                Usuario o Correo Electrónico
                             </label>
                             <input 
-                                type="email" 
-                                placeholder="tu-email@kinetix.com" 
-                                className={`w-full bg-black/70 border p-4 rounded-2xl font-bold text-xs text-white tracking-wider outline-none transition-all placeholder-white/20 ${isAdminMode ? 'border-red-600/80 focus:border-red-500 text-red-300' : 'border-white/10 focus:border-white/40'}`}
+                                type="text" 
+                                autoCapitalize="none"
+                                autoCorrect="off"
+                                placeholder="ej: juan.perez o tu-email@kinetix.com" 
+                                className={`w-full bg-black/70 border p-4 rounded-2xl font-bold text-xs text-white tracking-wider outline-none transition-all placeholder-white/25 ${isAdminMode ? 'border-red-600/80 focus:border-red-500 text-red-300' : 'border-white/10 focus:border-white/40'}`}
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 disabled={status !== 'idle'}
@@ -137,20 +141,30 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                         <div className="space-y-1.5">
                             <div className="flex justify-between items-center pl-1">
                                 <label className="text-[8px] font-black uppercase text-white/40 tracking-[0.2em]">
-                                    {isAdminMode ? 'Clave Maestra de Staff' : 'Clave de Acceso Asignada'}
+                                    {isAdminMode ? 'Clave Maestra de Staff' : 'Contraseña'}
                                 </label>
                                 <span className="text-[7px] text-white/30 font-bold uppercase">
-                                    {isAdminMode ? 'Acceso Privado' : 'Asignada por tu coach'}
+                                    {isAdminMode ? 'Acceso Privado' : 'Editable en tu Perfil'}
                                 </span>
                             </div>
-                            <input 
-                                type="password" 
-                                placeholder={isAdminMode ? "Ingresa tu clave maestra" : "Ingresa tu clave de atleta"} 
-                                className={`w-full bg-black/70 border p-4 rounded-2xl font-bold text-xs text-white tracking-wider outline-none transition-all placeholder-white/20 ${isAdminMode ? 'border-red-600/80 focus:border-red-500 text-red-300' : 'border-white/10 focus:border-white/40'}`}
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                disabled={status !== 'idle'}
-                            />
+                            <div className="relative">
+                                <input 
+                                    type={showPassword ? 'text' : 'password'} 
+                                    placeholder={isAdminMode ? "Ingresa tu clave maestra" : "Ingresa tu contraseña"} 
+                                    className={`w-full bg-black/70 border p-4 pr-12 rounded-2xl font-bold text-xs text-white tracking-wider outline-none transition-all placeholder-white/25 ${isAdminMode ? 'border-red-600/80 focus:border-red-500 text-red-300' : 'border-white/10 focus:border-white/40'}`}
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    disabled={status !== 'idle'}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(p => !p)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs px-2 py-1"
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? 'Ocultar' : 'Ver'}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -195,13 +209,18 @@ export const AuthScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                     </div>
                 </div>
 
+                {/* Botón instalar como App en Pantalla de Inicio */}
+                <div className="w-full">
+                    <PWAInstallButton />
+                </div>
+
                 {/* Instrucciones limpias sin filtrar contraseñas internas */}
                 <div className="w-full bg-black/40 border border-white/5 rounded-2xl p-3.5 space-y-1 text-left">
                     <p className="text-[8px] font-black uppercase tracking-widest text-white/50">
                         🔒 Metodología Exclusiva Lic. Jorge González • Kinetix Functional Zone
                     </p>
                     <p className="text-[8px] text-white/40 leading-relaxed">
-                        Ingresa con el correo y clave asignados por tu entrenador para acceder a tu sesión del día.
+                        Ingresa con el usuario (o correo) y contraseña asignados por tu entrenador. Luego podrás cambiar tu contraseña desde tu perfil.
                     </p>
                 </div>
 

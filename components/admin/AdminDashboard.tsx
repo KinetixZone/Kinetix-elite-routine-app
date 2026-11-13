@@ -157,7 +157,7 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
   };
 
   const supabaseSQL = `-- =======================================================
--- KINETIX FUNCTIONAL ZONE - MASTER DATABASE SCHEMA v7.2
+-- KINETIX FUNCTIONAL ZONE - MASTER DATABASE SCHEMA v7.3
 -- Metodología: Lic. Jorge González & Leslie Barrera
 -- Copia este script completo y pégalo en:
 -- Supabase Dashboard > SQL Editor > New query > Run (Ctrl+Enter)
@@ -179,23 +179,56 @@ CREATE TABLE IF NOT EXISTS public.kinetix_templates (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. TABLA DE ATLETAS (athletes)
+-- 2. TABLA DE USUARIOS, ATLETAS Y COACHES (athletes)
 CREATE TABLE IF NOT EXISTS public.athletes (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    username TEXT UNIQUE,
     email TEXT UNIQUE NOT NULL,
+    password TEXT DEFAULT 'kinetix.atleta',
     goal TEXT,
     level TEXT,
     role TEXT DEFAULT 'client',
     days_per_week INTEGER DEFAULT 4,
     equipment JSONB DEFAULT '[]'::jsonb,
     is_active BOOLEAN DEFAULT true,
+    is_unlimited BOOLEAN DEFAULT false,
+    access_tier TEXT DEFAULT 'regular',
     streak INTEGER DEFAULT 0,
     cycle_end_date DATE,
+    age INTEGER,
+    weight NUMERIC,
+    medical_conditions TEXT,
+    preferred_unit TEXT DEFAULT 'kg',
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. TABLA DE HISTORIAL DE ENTRENAMIENTOS Y RM (workout_logs)
+-- Migración segura si ya creaste la tabla en v7.2:
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS password TEXT DEFAULT 'kinetix.atleta';
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS is_unlimited BOOLEAN DEFAULT false;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS access_tier TEXT DEFAULT 'regular';
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS age INTEGER;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS weight NUMERIC;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS medical_conditions TEXT;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS preferred_unit TEXT DEFAULT 'kg';
+
+-- 3. TABLA DE CALENDARIO Y ASIGNACIONES (kinetix_calendar)
+CREATE TABLE IF NOT EXISTS public.kinetix_calendar (
+    id TEXT PRIMARY KEY,
+    type TEXT DEFAULT 'workout',
+    title TEXT,
+    start_at TEXT NOT NULL,
+    end_at TEXT,
+    all_day BOOLEAN DEFAULT true,
+    coach_id TEXT DEFAULT 'jorge',
+    athlete_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    workout_template_id TEXT,
+    location TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. TABLA DE HISTORIAL DE ENTRENAMIENTOS Y RM (workout_logs)
 CREATE TABLE IF NOT EXISTS public.workout_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     athlete_id TEXT,
@@ -206,7 +239,7 @@ CREATE TABLE IF NOT EXISTS public.workout_logs (
     timestamp TIMESTAMPTZ DEFAULT now()
 );
 
--- 4. TABLA DE MÉTRICAS CORPORALES Y ANTROPOMETRÍA (body_metrics)
+-- 5. TABLA DE MÉTRICAS CORPORALES Y ANTROPOMETRÍA (body_metrics)
 CREATE TABLE IF NOT EXISTS public.body_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     athlete_id TEXT,
@@ -219,36 +252,31 @@ CREATE TABLE IF NOT EXISTS public.body_metrics (
     date DATE DEFAULT CURRENT_DATE
 );
 
--- 5. HABILITAR SEGURIDAD (RLS) Y PERMISOS DE ACCESO
+-- 6. HABILITAR SEGURIDAD (RLS) Y PERMISOS DE ACCESO
 ALTER TABLE public.kinetix_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athletes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kinetix_calendar ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.body_metrics ENABLE ROW LEVEL SECURITY;
 
--- Políticas de lectura y escritura para la Publishable / Anon Key
-CREATE POLICY "Acceso total plantillas Kinetix" 
-ON public.kinetix_templates FOR ALL 
-TO anon, authenticated 
-USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso total plantillas Kinetix" ON public.kinetix_templates;
+CREATE POLICY "Acceso total plantillas Kinetix" ON public.kinetix_templates FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Acceso total atletas Kinetix" 
-ON public.athletes FOR ALL 
-TO anon, authenticated 
-USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso total atletas Kinetix" ON public.athletes;
+CREATE POLICY "Acceso total atletas Kinetix" ON public.athletes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Acceso total logs entrenamientos" 
-ON public.workout_logs FOR ALL 
-TO anon, authenticated 
-USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso total calendario Kinetix" ON public.kinetix_calendar;
+CREATE POLICY "Acceso total calendario Kinetix" ON public.kinetix_calendar FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Acceso total métricas corporales" 
-ON public.body_metrics FOR ALL 
-TO anon, authenticated 
-USING (true) WITH CHECK (true);`;
+DROP POLICY IF EXISTS "Acceso total logs entrenamientos" ON public.workout_logs;
+CREATE POLICY "Acceso total logs entrenamientos" ON public.workout_logs FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acceso total métricas corporales" ON public.body_metrics;
+CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
   const copySQL = () => {
       navigator.clipboard.writeText(supabaseSQL);
-      alert("✅ SQL Maestro v7.2 copiado. Pégalo en tu Supabase SQL Editor y dale a 'Run'.");
+      setSeedResult("✅ SQL Maestro v7.3 copiado. Pégalo en tu Supabase SQL Editor y dale a 'Run'.");
   };
 
   return (

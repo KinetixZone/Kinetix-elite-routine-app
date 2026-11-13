@@ -35,10 +35,13 @@ const getStoredCustomConfig = () => {
   return { url: '', key: '' };
 };
 
+const DEFAULT_SUPABASE_URL = 'https://cckcpwqsolovddlzlkuo.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_uouTiNM4nKG87oUmobPL4Q_XO6kcvD9';
+
 const customConfig = getStoredCustomConfig();
 
-const rawUrl = getEnv('SUPABASE_URL') || customConfig.url;
-const rawKey = getEnv('SUPABASE_ANON_KEY') || customConfig.key;
+const rawUrl = getEnv('SUPABASE_URL') || customConfig.url || DEFAULT_SUPABASE_URL;
+const rawKey = getEnv('SUPABASE_ANON_KEY') || customConfig.key || DEFAULT_SUPABASE_ANON_KEY;
 
 export const supabaseUrl = sanitizeSupabaseUrl(rawUrl);
 export const supabaseAnonKey = sanitizeSupabaseKey(rawKey);

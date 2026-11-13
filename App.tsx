@@ -46,10 +46,28 @@ const App: React.FC = () => {
   const [showUnitConverter, setShowUnitConverter] = useState(false);
 
   useEffect(() => {
-    const initApp = () => {
+    const initApp = async () => {
         storageService.init(DEFAULT_WORKOUT);
         const localUser = storageService.getUser();
         if (localUser) {
+            if (localUser.role !== 'owner') {
+                const syncedList = await storageService.syncAthletesFromCloud();
+                const fresh = syncedList.find(u => u.id === localUser.id);
+                if (fresh) {
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    const expired = !fresh.isUnlimited && fresh.role === 'client' && fresh.cycleEndDate && fresh.cycleEndDate < todayIso;
+                    if (fresh.isActive === false || expired) {
+                        storageService.logout();
+                        setIsLoading(false);
+                        return;
+                    }
+                    storageService.saveUser(fresh);
+                    setUser(fresh);
+                    setView(fresh.role === 'client' ? 'athlete_home' : 'home');
+                    setIsLoading(false);
+                    return;
+                }
+            }
             setUser(localUser);
             if (localUser.role === 'client') setView('athlete_home');
             else setView('home');
@@ -62,8 +80,12 @@ const App: React.FC = () => {
   const refreshWorkoutContext = useCallback(async () => {
     if (!user) return;
     
-    // EL CAMBIO CLAVE: Esperar a que getTemplates consulte la nube (Supabase)
-    const templates = await storageService.getTemplates(user.role === 'client' ? user.id : undefined);
+    const [templates] = await Promise.all([
+      storageService.getTemplates(user.role === 'client' ? user.id : undefined),
+      calendarService.syncCalendarFromCloud(user.role === 'client' ? user.id : undefined),
+      storageService.syncLogsFromCloud(user.role === 'client' ? user.id : undefined),
+      storageService.syncAthletesFromCloud()
+    ]);
     setAvailableTemplates(templates);
     
     const today = new Date();
@@ -81,7 +103,7 @@ const App: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    if (user && view === 'athlete_home') {
+    if (user && (view === 'athlete_home' || view === 'home')) {
         refreshWorkoutContext();
     }
   }, [user, view, refreshWorkoutContext]);
@@ -145,6 +167,7 @@ const App: React.FC = () => {
                     availableWorkouts={availableTemplates}
                     onStartSession={handleStartSession}
                     onLogout={handleLogout}
+                    onUserUpdate={setUser}
                 />
             )}
         </div>

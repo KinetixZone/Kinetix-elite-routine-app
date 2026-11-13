@@ -56,13 +56,29 @@ export interface AthleteInsight {
 
 import { PRESET_WORKOUT_TEMPLATES } from '../constants/presetWorkouts';
 
+export const generateUsernameFromName = (name: string): string => {
+  const clean = (name || 'atleta')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join('.');
+  return clean || `atleta.${Math.floor(100 + Math.random() * 900)}`;
+};
+
 const DEFAULT_ATHLETES: User[] = [
   {
     id: 'ath-1',
     name: 'Carlos Rodríguez',
+    username: 'carlos',
     email: 'carlos@kinetix.com',
     password: 'kinetix.atleta',
     role: 'client',
+    accessTier: 'regular',
+    isUnlimited: false,
     goal: Goal.PERFORMANCE,
     level: UserLevel.ADVANCED,
     daysPerWeek: 4,
@@ -78,9 +94,12 @@ const DEFAULT_ATHLETES: User[] = [
   {
     id: 'ath-2',
     name: 'Ana García (Personalizada Jorge)',
+    username: 'ana',
     email: 'ana@kinetix.com',
     password: 'kinetix.atleta',
     role: 'client',
+    accessTier: 'personalizado',
+    isUnlimited: false,
     goal: Goal.GAIN_MUSCLE,
     level: UserLevel.INTERMEDIATE,
     daysPerWeek: 4,
@@ -96,9 +115,12 @@ const DEFAULT_ATHLETES: User[] = [
   {
     id: 'ath-3',
     name: 'Diego Morales (Modo Vacaciones / Hotel)',
+    username: 'diego',
     email: 'diego@kinetix.com',
     password: 'kinetix.atleta',
     role: 'client',
+    accessTier: 'vacaciones',
+    isUnlimited: false,
     goal: Goal.PERFORMANCE,
     level: UserLevel.INTERMEDIATE,
     daysPerWeek: 3,
@@ -165,7 +187,158 @@ class StorageService {
     }
   }
 
-  saveAthletes(athletes: User[]) { localStorage.setItem(KEYS.ATHLETES_DB, JSON.stringify(athletes)); }
+  saveAthletes(athletes: User[]) {
+    localStorage.setItem(KEYS.ATHLETES_DB, JSON.stringify(athletes));
+  }
+
+  private mapRowToUser(row: any): User {
+    return {
+      id: row.id,
+      name: row.name,
+      username: row.username || generateUsernameFromName(row.name),
+      email: row.email || `${row.username || row.id}@kinetix.local`,
+      phone: row.phone || '',
+      password: row.password || 'kinetix.atleta',
+      goal: (row.goal as Goal) || Goal.PERFORMANCE,
+      level: (row.level as UserLevel) || UserLevel.BEGINNER,
+      role: row.role || 'client',
+      daysPerWeek: row.days_per_week ?? 4,
+      equipment: Array.isArray(row.equipment) ? row.equipment : [],
+      isActive: row.is_active !== false,
+      isUnlimited: !!row.is_unlimited || row.role === 'coach' || row.role === 'owner',
+      accessTier: row.access_tier || (row.is_unlimited ? 'vip_sin_corte' : 'regular'),
+      streak: row.streak ?? 0,
+      cycleEndDate: row.cycle_end_date || undefined,
+      age: row.age ?? undefined,
+      weight: row.weight ?? undefined,
+      medicalConditions: row.medical_conditions || '',
+      preferredUnit: row.preferred_unit || 'kg',
+      createdAt: row.created_at || new Date().toISOString()
+    };
+  }
+
+  async syncAthletesFromCloud(): Promise<User[]> {
+    const localList = this.getAthletes();
+    if (!isSupabaseConfigured) return localList;
+    try {
+      const { data, error } = await supabase.from('athletes').select('*');
+      if (error || !data) return localList;
+      const cloudUsers = data.map(row => this.mapRowToUser(row));
+      if (cloudUsers.length === 0) return localList;
+
+      const mergedMap = new Map<string, User>();
+      localList.forEach(u => mergedMap.set(u.id, u));
+      cloudUsers.forEach(cu => {
+        const existing = mergedMap.get(cu.id);
+        mergedMap.set(cu.id, existing ? { ...existing, ...cu } : cu);
+      });
+      const merged = Array.from(mergedMap.values());
+      this.saveAthletes(merged);
+      return merged;
+    } catch (e) {
+      console.warn('Supabase syncAthletes fallback', e);
+      return localList;
+    }
+  }
+
+  async upsertAthleteCloud(user: User): Promise<{ ok: boolean; error?: string }> {
+    const normalizedUser: User = {
+      ...user,
+      username: (user.username || generateUsernameFromName(user.name)).trim().toLowerCase(),
+      email: (user.email || `${(user.username || generateUsernameFromName(user.name)).trim().toLowerCase()}@kinetix.local`).trim().toLowerCase(),
+      password: (user.password || 'kinetix.atleta').trim()
+    };
+
+    const list = this.getAthletes();
+    const exists = list.some(a => a.id === normalizedUser.id);
+    const updatedList = exists
+      ? list.map(a => a.id === normalizedUser.id ? normalizedUser : a)
+      : [...list, normalizedUser];
+    this.saveAthletes(updatedList);
+
+    const currentUser = this.getUser();
+    if (currentUser && currentUser.id === normalizedUser.id) {
+      this.saveUser(normalizedUser);
+    }
+
+    if (!isSupabaseConfigured) return { ok: true };
+
+    const fullPayload = {
+      id: normalizedUser.id,
+      name: normalizedUser.name,
+      username: normalizedUser.username,
+      email: normalizedUser.email,
+      password: normalizedUser.password,
+      goal: normalizedUser.goal,
+      level: normalizedUser.level,
+      role: normalizedUser.role,
+      days_per_week: normalizedUser.daysPerWeek || 4,
+      equipment: normalizedUser.equipment || [],
+      is_active: normalizedUser.isActive !== false,
+      is_unlimited: !!normalizedUser.isUnlimited,
+      access_tier: normalizedUser.accessTier || (normalizedUser.isUnlimited ? 'vip_sin_corte' : 'regular'),
+      streak: normalizedUser.streak || 0,
+      cycle_end_date: normalizedUser.cycleEndDate || null,
+      age: normalizedUser.age || null,
+      weight: normalizedUser.weight || null,
+      medical_conditions: normalizedUser.medicalConditions || '',
+      preferred_unit: normalizedUser.preferredUnit || 'kg'
+    };
+
+    try {
+      const { error } = await supabase.from('athletes').upsert(fullPayload);
+      if (error) {
+        // Fallback para tablas v7.2 que aún no ejecutan el SQL v7.3
+        const corePayload = {
+          id: normalizedUser.id,
+          name: normalizedUser.name,
+          email: normalizedUser.email,
+          goal: normalizedUser.goal,
+          level: normalizedUser.level,
+          role: normalizedUser.role,
+          days_per_week: normalizedUser.daysPerWeek || 4,
+          equipment: normalizedUser.equipment || [],
+          is_active: normalizedUser.isActive !== false,
+          streak: normalizedUser.streak || 0,
+          cycle_end_date: normalizedUser.cycleEndDate || null
+        };
+        const retry = await supabase.from('athletes').upsert(corePayload);
+        if (retry.error) return { ok: false, error: retry.error.message };
+        return { ok: true, error: 'Actualiza el SQL v7.3 en Admin > Sistema para sincronizar usuarios/claves en todos los dispositivos.' };
+      }
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Error de red Supabase' };
+    }
+  }
+
+  async deleteAthleteCloud(athleteId: string): Promise<void> {
+    const filtered = this.getAthletes().filter(a => a.id !== athleteId);
+    this.saveAthletes(filtered);
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('athletes').delete().eq('id', athleteId);
+      } catch (e) {
+        console.warn('Error deleting athlete in cloud', e);
+      }
+    }
+  }
+
+  async updateUserPassword(userId: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+    const pwd = newPassword.trim();
+    if (!pwd || pwd.length < 4) return { ok: false, error: 'La contraseña debe tener al menos 4 caracteres.' };
+    const athletes = this.getAthletes();
+    const target = athletes.find(a => a.id === userId);
+    if (target) {
+      return this.upsertAthleteCloud({ ...target, password: pwd });
+    }
+    const current = this.getUser();
+    if (current && current.id === userId) {
+      this.saveUser({ ...current, password: pwd });
+      return { ok: true };
+    }
+    return { ok: false, error: 'Usuario no encontrado.' };
+  }
 
   getExercises(): Exercise[] {
     const data = localStorage.getItem(KEYS.EXERCISE_LIBRARY);
@@ -325,20 +498,8 @@ class StorageService {
 
       // 2. Insertar atletas en public.athletes
       for (const ath of athletes) {
-        const { error } = await supabase.from('athletes').upsert({
-          id: ath.id,
-          name: ath.name,
-          email: ath.email,
-          goal: ath.goal,
-          level: ath.level,
-          role: ath.role,
-          days_per_week: ath.daysPerWeek || 4,
-          equipment: ath.equipment || [],
-          is_active: ath.isActive !== false,
-          streak: ath.streak || 0,
-          cycle_end_date: ath.cycleEndDate || null
-        });
-        if (!error) athletesInserted++;
+        const res = await this.upsertAthleteCloud(ath);
+        if (res.ok) athletesInserted++;
       }
 
       return {
@@ -428,6 +589,55 @@ class StorageService {
     });
 
     localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([...currentLogs, ...processedLogs]));
+
+    if (isSupabaseConfigured && processedLogs.length > 0) {
+      const cloudRows = processedLogs.map(l => ({
+        athlete_id: l.athleteId || null,
+        exercise_id: l.exerciseId,
+        weight: Number(l.weight) || 0,
+        reps: Number(l.reps) || 0,
+        is_pr: !!l.isPR,
+        timestamp: l.timestamp || new Date().toISOString()
+      }));
+      supabase.from('workout_logs').insert(cloudRows).then(({ error }) => {
+        if (error) console.warn('Cloud log insert skipped:', error.message);
+      });
+    }
+  }
+
+  async syncLogsFromCloud(athleteId?: string): Promise<WorkoutLog[]> {
+    const local = this.getAllLogs();
+    if (!isSupabaseConfigured) return local;
+    try {
+      let query = supabase.from('workout_logs').select('*').order('timestamp', { ascending: false }).limit(250);
+      if (athleteId) query = query.eq('athlete_id', athleteId);
+      const { data, error } = await query;
+      if (error || !data) return local;
+
+      const cloudLogs: WorkoutLog[] = data.map((row: any, idx: number) => ({
+        athleteId: row.athlete_id || undefined,
+        exerciseId: row.exercise_id,
+        setIndex: idx,
+        weight: Number(row.weight) || 0,
+        reps: Number(row.reps) || 0,
+        isPR: !!row.is_pr,
+        timestamp: row.timestamp
+      }));
+
+      const seen = new Set(local.map(l => `${l.athleteId || ''}_${l.exerciseId}_${l.timestamp}_${l.weight}_${l.reps}`));
+      const merged = [...local];
+      cloudLogs.forEach(cl => {
+        const sig = `${cl.athleteId || ''}_${cl.exerciseId}_${cl.timestamp}_${cl.weight}_${cl.reps}`;
+        if (!seen.has(sig)) {
+          seen.add(sig);
+          merged.push(cl);
+        }
+      });
+      localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(merged));
+      return merged;
+    } catch (e) {
+      return local;
+    }
   }
 
   getAllLogs(): WorkoutLog[] {
@@ -599,7 +809,9 @@ class StorageService {
   }
 
   saveStaff(s: any) {}
-  getStaff(): User[] { return []; }
+  getStaff(): User[] {
+    return this.getAthletes().filter(u => u.role === 'coach');
+  }
 
   saveBodyMetric(metric: BodyMetric) {
     const list = this.getBodyMetrics();

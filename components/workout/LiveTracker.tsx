@@ -158,14 +158,23 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     tabataCurrentSet: 1
   });
 
-  const [expandedId, setExpandedId] = useState<string | null>(workout.exercises[0]?.exerciseId || null);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(workout.exercises.length > 0 ? 0 : null);
+  const [displayUnit, setDisplayUnit] = useState<WeightUnit>(user?.preferredUnit || 'kg');
   const [elapsed, setElapsed] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [feedback, setFeedback] = useState<SessionFeedback>({ rpe: 7, fatigue: 3, notes: '' });
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [showConverter, setShowConverter] = useState(false);
+
+  const goToExercise = (idx: number | null) => {
+    setExpandedIdx(idx);
+    if (idx !== null) {
+      setTimeout(() => {
+        document.getElementById(`kinetix-ex-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
+  };
 
   // TONELAJE TOTAL COMPUTADO EN TIEMPO REAL
   const currentTonnage = useMemo(() => {
@@ -311,9 +320,13 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       const manualR = progress.performanceData[row.exerciseId]?.reps[row.globalIndex];
       const ghost = ghostMap[row.exerciseId];
       
-      const finalWeight = manualW !== undefined && manualW > 0 
+      const rawWeight = manualW !== undefined && manualW > 0 
         ? manualW 
         : (ghost?.weight || parseWeightValue(row.targetWeight));
+
+      const finalWeight = manualW !== undefined && manualW > 0 && displayUnit === 'lbs'
+        ? Math.round((rawWeight / 2.20462) * 10) / 10
+        : rawWeight;
       
       const finalReps = manualR !== undefined && manualR > 0 
         ? manualR 
@@ -413,6 +426,16 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     setIntervalModal(null);
   };
 
+  const pendingExercises = useMemo(() => {
+    return workout.exercises
+      .map((ex, idx) => {
+        const rows = generateTrackingRows(ex);
+        const doneCount = progress.workoutLogs.filter(l => rows.some(r => r.exerciseId === l.exerciseId && r.globalIndex === l.setIndex)).length;
+        return { idx, name: ex.name, doneCount, total: rows.length };
+      })
+      .filter(item => item.doneCount < item.total);
+  }, [workout.exercises, progress.workoutLogs]);
+
   const handleCompleteRequest = async () => {
     setShowFeedback(true);
   };
@@ -479,19 +502,36 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <div className="flex bg-black/70 p-0.5 rounded-xl border border-white/10">
+              <button
+                type="button"
+                onClick={() => setDisplayUnit('kg')}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayUnit === 'kg' ? 'bg-red-600 text-white' : 'text-white/50 hover:text-white'}`}
+              >
+                KG
+              </button>
+              <button
+                type="button"
+                onClick={() => setDisplayUnit('lbs')}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black transition-all ${displayUnit === 'lbs' ? 'bg-cyan-500 text-black' : 'text-white/50 hover:text-white'}`}
+              >
+                LBS
+              </button>
+            </div>
+
             <button 
               type="button"
               onClick={() => setShowConverter(true)} 
-              className="px-3 py-2.5 bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 hover:text-white transition-all flex items-center gap-1.5"
+              className="px-2.5 py-2 bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-white/80 hover:text-white transition-all flex items-center gap-1"
               title="Abrir Conversor de Cargas KG ⇄ LBS"
             >
               <span>⚖️</span>
-              <span className="hidden sm:inline">KG ⇄ LBS</span>
+              <span className="hidden sm:inline">Calc</span>
             </button>
 
             <button 
               onClick={handleCompleteRequest} 
-              className="px-4 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all shrink-0"
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all shrink-0"
             >
               Finalizar
             </button>
@@ -504,12 +544,12 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
             const exRows = generateTrackingRows(ex);
             const doneCount = progress.workoutLogs.filter(l => exRows.some(r => r.exerciseId === l.exerciseId && r.globalIndex === l.setIndex)).length;
             const isComplete = doneCount >= exRows.length && exRows.length > 0;
-            const isCurrent = expandedId === ex.exerciseId;
+            const isCurrent = expandedIdx === idx;
             return (
               <button
                 key={`${ex.exerciseId}-${idx}`}
                 type="button"
-                onClick={() => setExpandedId(ex.exerciseId)}
+                onClick={() => goToExercise(idx)}
                 className={`px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
                   isCurrent
                     ? 'bg-red-600 text-white shadow-md'
@@ -540,7 +580,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       <div className="relative z-20 p-4 space-y-4 max-w-2xl mx-auto">
         {workout.exercises.map((ex, i) => {
           const rows = generateTrackingRows(ex);
-          const isExpanded = expandedId === ex.exerciseId;
+          const isExpanded = expandedIdx === i;
           const completedCount = progress.workoutLogs.filter(l => rows.some(r => r.exerciseId === l.exerciseId && r.globalIndex === l.setIndex)).length;
           const isAllDone = completedCount >= rows.length && rows.length > 0;
           const ghost = ghostMap[ex.exerciseId];
@@ -548,18 +588,19 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
 
           return (
             <div 
+              id={`kinetix-ex-${i}`}
               key={i} 
-              className={`rounded-[32px] border transition-all ${
+              className={`rounded-[32px] border transition-all scroll-mt-32 ${
                 isExpanded 
                   ? 'bg-[#121215] border-white/20 shadow-2xl scale-[1.01]' 
                   : isAllDone 
-                  ? 'bg-black/60 opacity-60 border-green-900/40' 
+                  ? 'bg-black/60 opacity-75 border-green-900/40' 
                   : 'bg-[#0F0F11] border-white/5'
               }`}
             >
               {/* HEADER EXERCISE ROW */}
               <div 
-                onClick={() => setExpandedId(isExpanded ? null : ex.exerciseId)} 
+                onClick={() => goToExercise(isExpanded ? null : i)} 
                 className="p-6 flex justify-between items-center cursor-pointer"
               >
                 <div className="flex items-center gap-4">
@@ -710,12 +751,20 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                           <div className="flex-1 flex gap-2">
                             <div className="relative flex-1">
                               <div className="flex justify-between items-center -top-3 left-0 absolute right-0">
-                                <span className="text-[6px] text-white/30 uppercase font-black">KG</span>
+                                <span className="text-[7px] text-white/40 uppercase font-black">{displayUnit.toUpperCase()}</span>
                                 {(() => {
-                                  const currentVal = progress.performanceData[row.exerciseId]?.weights[row.globalIndex] ?? (ghost ? ghost.weight : parseWeightValue(row.targetWeight));
-                                  return currentVal > 0 ? (
-                                    <span className="text-[6px] text-cyan-400 font-mono font-bold">
-                                      {getWeightEquivalenceHint(currentVal, 'kg')}
+                                  const enteredVal = progress.performanceData[row.exerciseId]?.weights[row.globalIndex];
+                                  if (enteredVal && enteredVal > 0) {
+                                    return (
+                                      <span className="text-[7px] text-cyan-400 font-mono font-bold">
+                                        {getWeightEquivalenceHint(enteredVal, displayUnit)}
+                                      </span>
+                                    );
+                                  }
+                                  const refKg = ghost ? ghost.weight : parseWeightValue(row.targetWeight);
+                                  return refKg > 0 ? (
+                                    <span className="text-[7px] text-cyan-400/80 font-mono font-bold">
+                                      {getWeightEquivalenceHint(refKg, 'kg')}
                                     </span>
                                   ) : null;
                                 })()}
@@ -762,18 +811,18 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     <button
                       type="button"
                       disabled={i === 0}
-                      onClick={() => setExpandedId(workout.exercises[i - 1]?.exerciseId || null)}
-                      className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/15 disabled:opacity-30 text-xs font-black uppercase tracking-wider text-white transition-all"
+                      onClick={() => goToExercise(i - 1)}
+                      className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 disabled:opacity-30 text-xs font-black uppercase tracking-wider text-white transition-all"
                     >
                       ← Anterior
                     </button>
-                    <span className="text-[11px] font-bold text-white/40 tabular-nums">
+                    <span className="text-[11px] font-bold text-white/50 tabular-nums">
                       Ejercicio {i + 1} de {workout.exercises.length}
                     </span>
                     {i < workout.exercises.length - 1 ? (
                       <button
                         type="button"
-                        onClick={() => setExpandedId(workout.exercises[i + 1]?.exerciseId || null)}
+                        onClick={() => goToExercise(i + 1)}
                         className="px-4 py-3 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-black uppercase tracking-wider transition-all"
                       >
                         Siguiente →
@@ -953,9 +1002,29 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
             {!aiDebrief && (
               <>
                 <div className="text-center">
-                  <h2 className="text-2xl font-black uppercase italic tracking-tighter">Reporte de Misión</h2>
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] mt-2 italic">Información vital para el Coach</p>
+                  <h2 className="text-2xl font-black uppercase italic tracking-tighter">Reporte de Sesión</h2>
+                  <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.25em] mt-1">Información vital para el Coach</p>
                 </div>
+
+                {pendingExercises.length > 0 && (
+                  <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 space-y-2">
+                    <p className="text-xs font-black text-amber-300 uppercase">
+                      ⚠️ Aún tienes {pendingExercises.length} ejercicio(s) con series pendientes:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingExercises.map(pe => (
+                        <button
+                          key={pe.idx}
+                          type="button"
+                          onClick={() => { setShowFeedback(false); goToExercise(pe.idx); }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-200 hover:text-black text-[10px] font-bold transition-all"
+                        >
+                          Ir a: {pe.name} ({pe.doneCount}/{pe.total})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-6">
                   <div className="space-y-3">
@@ -991,9 +1060,9 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Notas Tácticas</label>
+                    <label className="text-[9px] font-black text-white/40 uppercase tracking-widest">Notas para tu Coach</label>
                     <textarea 
-                      className="w-full bg-black border border-white/10 rounded-2xl p-4 text-xs font-medium text-white/80 outline-none focus:border-red-600 h-24" 
+                      className="w-full bg-black border border-white/10 rounded-2xl p-4 text-xs font-medium text-white/80 outline-none focus:border-red-600 h-20" 
                       placeholder="Ej: Molestia en hombro, muy buen agarre..." 
                       value={feedback.notes} 
                       onChange={e => setFeedback({...feedback, notes: e.target.value})} 
@@ -1001,54 +1070,73 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                   </div>
                 </div>
 
-                <button 
-                  onClick={generateDebrief}
-                  className="w-full py-6 bg-red-600 rounded-[24px] text-white font-black uppercase tracking-[0.35em] text-[10px] shadow-xl hover:bg-red-500 transition-all active:scale-95"
-                >
-                  FINALIZAR Y GUARDAR SESIÓN ✓
-                </button>
+                <div className="space-y-2.5">
+                  <button 
+                    type="button"
+                    onClick={generateDebrief}
+                    className="w-full py-5 bg-red-600 rounded-[22px] text-white font-black uppercase tracking-[0.25em] text-[10px] shadow-xl hover:bg-red-500 transition-all active:scale-95"
+                  >
+                    FINALIZAR Y GUARDAR SESIÓN ✓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowFeedback(false)}
+                    className="w-full py-3.5 bg-white/10 hover:bg-white/20 rounded-2xl text-white/80 font-black uppercase tracking-wider text-[10px] transition-all"
+                  >
+                    ← Regresar a Mis Ejercicios
+                  </button>
+                </div>
               </>
             )}
 
             {aiDebrief && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_5px_blue]" />
-                  <h2 className="text-xl font-black uppercase italic tracking-tighter">Mission Debrief</h2>
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_5px_cyan]" />
+                  <h2 className="text-xl font-black uppercase italic tracking-tighter">Resumen Kinetix</h2>
                 </div>
                 
                 <div className="bg-black/50 border border-white/5 p-6 rounded-3xl">
-                  <p className="text-xs font-medium leading-relaxed text-white/80 whitespace-pre-wrap italic">
+                  <p className="text-xs font-medium leading-relaxed text-white/85 whitespace-pre-wrap">
                     {aiDebrief}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5 text-center">
-                    <p className="text-[8px] font-black text-white/20 uppercase">Volumen</p>
-                    <p className="text-lg font-black text-white italic">{progress.workoutLogs.length} sets</p>
+                    <p className="text-[8px] font-black text-white/30 uppercase">Volumen</p>
+                    <p className="text-lg font-black text-white italic">{progress.workoutLogs.length} series</p>
                   </div>
                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5 text-center">
-                    <p className="text-[8px] font-black text-white/20 uppercase">RPE Final</p>
-                    <p className="text-lg font-black text-red-600 italic">@{feedback.rpe}</p>
+                    <p className="text-[8px] font-black text-white/30 uppercase">RPE Final</p>
+                    <p className="text-lg font-black text-red-500 italic">@{feedback.rpe}</p>
                   </div>
                 </div>
 
-                <button 
-                  onClick={() => {
-                    const updatedLogs = progress.workoutLogs.map(log => ({ 
-                      ...log, 
-                      athleteId: user?.id,
-                      workoutId: workout.id,
-                      workoutName: workout.name,
-                      feedback 
-                    }));
-                    onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });
-                  }} 
-                  className="w-full py-6 bg-white text-black rounded-[24px] font-black uppercase tracking-[0.4em] text-[10px] shadow-xl hover:bg-red-600 hover:text-white transition-all active:scale-95"
-                >
-                  CERRAR OPERACIÓN
-                </button>
+                <div className="space-y-2.5">
+                  <button 
+                    onClick={() => {
+                      const updatedLogs = progress.workoutLogs.map(log => ({ 
+                        ...log, 
+                        athleteId: user?.id,
+                        workoutId: workout.id,
+                        workoutName: workout.name,
+                        feedback 
+                      }));
+                      onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });
+                    }} 
+                    className="w-full py-5 bg-white text-black rounded-[22px] font-black uppercase tracking-[0.3em] text-[10px] shadow-xl hover:bg-red-600 hover:text-white transition-all active:scale-95"
+                  >
+                    CERRAR Y BLOQUEAR SESIÓN ✓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAiDebrief(null); setShowFeedback(false); }}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-white/75 font-black uppercase tracking-wider text-[10px] transition-all"
+                  >
+                    ← Regresar a corregir series
+                  </button>
+                </div>
               </div>
             )}
           </div>
