@@ -246,7 +246,7 @@ export const WorkoutManager: React.FC = () => {
   };
 
   return (
-    <div className="pt-20 pb-32 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
+    <div className="pt-6 md:pt-8 pb-28 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
        <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
           <div>
              <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.4em] mb-1">Control Total Coach & Dueña</p>

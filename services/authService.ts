@@ -76,9 +76,11 @@ class AuthService {
                 return { success: false, error: "ACCESO PAUSADO POR ADMINISTRACIÓN. CONTACTA A TU COACH." };
             }
 
-            // Verificar fecha de corte solo para cuentas con vencimiento (NO aplica a Sin Corte / VIP / Familia / Amigos / Coaches)
-            if (!account.isUnlimited && account.role === 'client' && account.cycleEndDate) {
-                const todayIso = new Date().toISOString().split('T')[0];
+            // Verificar fecha de corte en zona horaria local solo para clientes reales con vencimiento
+            const isDemoAccount = account.email?.toLowerCase().endsWith('@demo.com') || account.name?.toLowerCase().includes('(demo)');
+            if (!account.isUnlimited && !isDemoAccount && account.role === 'client' && account.cycleEndDate) {
+                const now = new Date();
+                const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 if (account.cycleEndDate < todayIso) {
                     return {
                         success: false,

@@ -110,8 +110,10 @@ const App: React.FC = () => {
                 const syncedList = await storageService.syncAthletesFromCloud();
                 const fresh = syncedList.find(u => u.id === localUser.id);
                 if (fresh) {
-                    const todayIso = new Date().toISOString().split('T')[0];
-                    const expired = !fresh.isUnlimited && fresh.role === 'client' && fresh.cycleEndDate && fresh.cycleEndDate < todayIso;
+                    const now = new Date();
+                    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const isDemoAccount = fresh.email?.toLowerCase().endsWith('@demo.com') || fresh.name?.toLowerCase().includes('(demo)');
+                    const expired = !fresh.isUnlimited && !isDemoAccount && fresh.role === 'client' && fresh.cycleEndDate && fresh.cycleEndDate < todayIso;
                     if (fresh.isActive === false || expired) {
                         storageService.logout();
                         setIsLoading(false);
@@ -235,52 +237,49 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white pb-32">
-        {/* Barra Superior de Identidad de Coach / Dueño */}
-        <header className="sticky top-0 z-[400] bg-[#050507]/95 backdrop-blur-xl border-b border-white/5 px-4 md:px-8 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-                <div className="relative w-10 h-10 rounded-2xl bg-black border border-cyan-500/40 p-0.5 overflow-hidden shadow-[0_0_15px_rgba(0,240,255,0.25)] flex items-center justify-center shrink-0">
+    <div className="min-h-screen bg-[#050507] text-white pb-24 md:pb-28">
+        {/* Barra Superior de Identidad de Coach / Dueño (Compacta en móvil y desktop) */}
+        <header className="sticky top-0 z-[400] bg-[#050507]/95 backdrop-blur-xl border-b border-white/10 px-3 md:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+                <div className="relative w-9 h-9 rounded-xl bg-black border border-cyan-500/40 p-0.5 overflow-hidden shadow-[0_0_12px_rgba(0,240,255,0.25)] flex items-center justify-center shrink-0">
                     <img 
                         src="/assets/aistudio/1759185151992_02f8a860.jpg" 
                         alt="Kinetix Logo" 
-                        className="w-full h-full object-cover rounded-xl"
+                        className="w-full h-full object-cover rounded-lg"
                     />
                 </div>
-                <div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] md:text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] md:text-xs font-black uppercase text-white tracking-wider truncate">
                             {user.name.toLowerCase().includes('leslie') ? '👑 Leslie' : user.name.toLowerCase().includes('jorge') ? '👑 Jorge González' : user.name}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/40">
+                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/40 shrink-0">
                             {user.name.toLowerCase().includes('jorge') ? 'HEAD COACH & DUEÑO' : user.name.toLowerCase().includes('leslie') ? 'DUEÑA & COACH' : 'COACH'}
                         </span>
                     </div>
-                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-1.5">
-                        <span className="text-cyan-400 font-black">Kinetix Functional Zone</span> • Mando Central
+                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-wider truncate">
+                        <span className="text-cyan-400 font-black">Kinetix</span> · {VIEW_LABELS[view]}
                     </p>
                 </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
                 {/* Navegación Global Anterior / Siguiente para Coach y Dueños */}
                 <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-0.5">
                     <button
                         type="button"
                         onClick={goBack}
                         disabled={navHistory.length === 0 && view === 'home'}
-                        className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/80 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/85 hover:bg-white/15 disabled:opacity-25 transition-all"
                         title="Regresar a la vista anterior"
                     >
                         ← Regresar
                     </button>
-                    <span className="text-[9px] font-black uppercase text-cyan-400 px-1.5 hidden md:inline">
-                        {VIEW_LABELS[view]}
-                    </span>
                     <button
                         type="button"
                         onClick={goForward}
                         disabled={forwardHistory.length === 0}
-                        className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/80 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/85 hover:bg-white/15 disabled:opacity-25 transition-all"
                         title="Ir a la vista siguiente"
                     >
                         Siguiente →
@@ -293,10 +292,10 @@ const App: React.FC = () => {
                         href="https://kinetix-control.vercel.app/" 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all shadow-[0_0_12px_rgba(0,240,255,0.15)]"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all"
                         title="Control de Pagos & Membresías (Solo Dueños)"
                     >
-                        <span>💳</span> <span className="hidden sm:inline">App </span>Pagos ↗
+                        <span>💳</span> <span className="hidden sm:inline">Pagos</span>
                     </a>
                 )}
 
@@ -305,74 +304,58 @@ const App: React.FC = () => {
                     href="https://kinetix-progress.vercel.app/" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-red-500/30 transition-all"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-red-500/30 transition-all"
                     title="Seguimiento de Cargas & RM (kinetix-progress.vercel.app)"
                 >
-                    <span>📈</span> <span className="hidden sm:inline">Cargas & </span>RM ↗
+                    <span>📈</span> <span className="hidden sm:inline">RM</span>
                 </a>
 
                 {/* Calculadora de Unidades KG ⇄ LBS */}
                 <button 
                     onClick={() => setShowUnitConverter(true)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white text-white hover:text-black text-[8px] font-black uppercase tracking-wider border border-white/20 transition-all"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white text-white hover:text-black text-[9px] font-black uppercase tracking-wider border border-white/20 transition-all"
                     title="Convertir Kilogramos y Libras"
                 >
-                    <span>⚖️</span> KG ⇄ LBS
+                    <span>⚖️</span> <span className="hidden md:inline">KG⇄LBS</span>
                 </button>
 
-                <button 
-                    onClick={() => navigateTo('crm')} 
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
-                >
-                    <span>👥</span> Atletas
-                </button>
-                <button 
-                    onClick={() => navigateTo('manager')} 
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
-                >
-                    <span>📐</span> Rutinas
-                </button>
                 {(user.role === 'admin' || user.role === 'owner') && (
                     <button 
                         onClick={() => navigateTo('admin_dashboard')} 
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-blue-500/40 transition-all"
+                        className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-blue-500/40 transition-all"
                     >
                         <span>⚙️</span> Sistema
                     </button>
                 )}
                 <button 
                     onClick={handleLogout} 
-                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/50 hover:text-red-400 text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
+                    className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/60 hover:text-red-400 text-[9px] font-black uppercase tracking-wider border border-white/10 transition-all"
                     title="Cerrar Sesión"
                 >
-                    Salir 🚪
+                    Salir
                 </button>
             </div>
         </header>
 
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/10 px-6 md:px-10 py-5 rounded-[35px] flex gap-8 md:gap-14 z-[500] shadow-[0_30px_70px_rgba(0,0,0,0.8)]">
-            <button onClick={() => navigateTo('home')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                <span className="text-xl">📊</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Dashboard</span>
+        <nav className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/15 px-5 md:px-8 py-3 md:py-4 rounded-3xl flex items-center gap-6 md:gap-12 z-[500] shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
+            <button onClick={() => navigateTo('home')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'home' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
+                <span className="text-lg md:text-xl">📊</span>
+                <span className="text-[8px] font-black uppercase tracking-wider">Inicio</span>
             </button>
-            <button onClick={() => navigateTo('crm')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'crm' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                <span className="text-xl">👥</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Atletas</span>
+            <button onClick={() => navigateTo('crm')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'crm' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
+                <span className="text-lg md:text-xl">👥</span>
+                <span className="text-[8px] font-black uppercase tracking-wider">Atletas</span>
             </button>
-            <button onClick={() => navigateTo('manager')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'manager' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                <span className="text-xl">📐</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Rutinas</span>
+            <button onClick={() => navigateTo('manager')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'manager' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
+                <span className="text-lg md:text-xl">📐</span>
+                <span className="text-[8px] font-black uppercase tracking-wider">Rutinas</span>
             </button>
             {(user.role === 'admin' || user.role === 'owner') && (
-                <button onClick={() => navigateTo('admin_dashboard')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                    <span className="text-xl">⚙️</span>
-                    <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Sistema</span>
+                <button onClick={() => navigateTo('admin_dashboard')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-105' : 'text-white/50 hover:text-white'}`}>
+                    <span className="text-lg md:text-xl">⚙️</span>
+                    <span className="text-[8px] font-black uppercase tracking-wider">Sistema</span>
                 </button>
             )}
-            <button onClick={handleLogout} className="flex flex-col items-center gap-1 text-red-900 border-l border-white/10 pl-6 md:pl-8 group">
-                <span className="text-xl group-hover:scale-110 transition-transform">🚪</span>
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Off</span>
-            </button>
         </nav>
 
         <main className="animate-in fade-in duration-500">

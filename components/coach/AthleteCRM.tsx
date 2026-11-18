@@ -647,10 +647,17 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
 
   const allExercises = useMemo(() => storageService.getExercises(), []);
 
+  const nowLocal = new Date();
+  const todayLocalIso = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
+  const isAthleteExpired = (a: User) => {
+    const isDemo = a.email?.toLowerCase().endsWith('@demo.com') || a.name?.toLowerCase().includes('(demo)');
+    return !a.isUnlimited && !isDemo && a.role === 'client' && !!a.cycleEndDate && a.cycleEndDate < todayLocalIso;
+  };
+
   return (
-    <div className="pt-20 pb-32 px-4 md:px-8 max-w-7xl mx-auto flex flex-col md:flex-row gap-8">
-      {/* SIDEBAR DE ATLETAS */}
-      <div className="flex-1 space-y-4">
+    <div className="pt-4 md:pt-8 pb-28 px-3 md:px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-start gap-6">
+      {/* SIDEBAR DE ATLETAS (En móvil/tablet se oculta cuando hay un atleta abierto para evitar scroll excesivo) */}
+      <div className={`${selectedAthlete ? 'hidden lg:block' : 'block'} w-full lg:w-[340px] lg:shrink-0 lg:sticky lg:top-20 space-y-4`}>
         <div className="flex justify-between items-center">
           <div>
             <p className="text-[9px] font-black uppercase text-cyan-400 tracking-[0.3em]">Gestión de Alumnos</p>
@@ -693,43 +700,46 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                </button>
              ))}
         </div>
-        <div className="space-y-3 overflow-y-auto custom-scrollbar h-[calc(100vh-290px)]">
-          {filteredAthletes.map(athlete => (
-             <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-5 rounded-[24px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
-                <div className="flex justify-between items-start gap-2">
-                    <h3 className="text-lg font-black uppercase italic tracking-tight mb-0.5 truncate">{athlete.name}</h3>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {athlete.role === 'coach' && (
-                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-purple-500/20 text-purple-400">COACH</span>
-                      )}
-                      {athlete.isUnlimited && athlete.role !== 'coach' && (
-                        <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-cyan-500/20 text-cyan-400">∞ SIN CORTE</span>
-                      )}
-                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${athlete.isActive !== false ? 'bg-green-500/10 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
-                          {athlete.isActive !== false ? 'Activo' : 'Pausado'}
-                      </span>
-                    </div>
-                </div>
-                <p className="text-[10px] opacity-60 font-mono font-bold">@{athlete.username || generateUsernameFromName(athlete.name)}</p>
-                <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
-                   <span className="text-[8px] font-mono text-red-500/80">Clave: {athlete.password || 'kinetix.atleta'}</span>
-                   {athlete.medicalConditions && (
-                     <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/90 bg-cyan-950/50 px-2 py-0.5 rounded-md truncate max-w-[140px]">
-                       {athlete.medicalConditions}
-                     </span>
-                   )}
-                </div>
-             </div>
-          ))}
+        <div className="space-y-3 lg:overflow-y-auto custom-scrollbar lg:max-h-[calc(100vh-260px)] lg:pr-1">
+          {filteredAthletes.map(athlete => {
+             const expired = isAthleteExpired(athlete);
+             return (
+               <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-4 md:p-5 rounded-[22px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
+                  <div className="flex justify-between items-start gap-2">
+                      <h3 className="text-base md:text-lg font-black uppercase italic tracking-tight mb-0.5 truncate">{athlete.name}</h3>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {athlete.role === 'coach' && (
+                          <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-purple-500/20 text-purple-400">COACH</span>
+                        )}
+                        {athlete.isUnlimited && athlete.role !== 'coach' && (
+                          <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-cyan-500/20 text-cyan-400">∞ SIN CORTE</span>
+                        )}
+                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${athlete.isActive === false ? 'bg-red-500/20 text-red-500' : expired ? 'bg-amber-500/20 text-amber-500' : 'bg-green-500/10 text-green-500'}`}>
+                            {athlete.isActive === false ? 'Pausado' : expired ? 'Vencido' : 'Activo'}
+                        </span>
+                      </div>
+                  </div>
+                  <p className="text-[10px] opacity-60 font-mono font-bold">@{athlete.username || generateUsernameFromName(athlete.name)}</p>
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                     <span className="text-[8px] font-mono text-red-500/80">Clave: {athlete.password || 'kinetix.atleta'}</span>
+                     {athlete.medicalConditions && (
+                       <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/90 bg-cyan-950/50 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                         {athlete.medicalConditions}
+                       </span>
+                     )}
+                  </div>
+               </div>
+             );
+          })}
           {filteredAthletes.length === 0 && (
              <p className="text-center text-xs font-black uppercase text-white/20 py-8">No hay atletas con este filtro</p>
           )}
         </div>
       </div>
 
-      {/* COCKPIT DEL ATLETA */}
+      {/* COCKPIT DEL ATLETA (Sin altura rígida cortada; scroll fluido en PC y móvil) */}
       {selectedAthlete && (
-        <div className="flex-[2] bg-[#0F0F11] border border-white/5 rounded-[40px] p-6 md:p-10 flex flex-col h-[calc(100vh-140px)] overflow-hidden shadow-2xl relative animate-in slide-in-from-right-10">
+        <div className="flex-1 w-full min-w-0 bg-[#0F0F11] border border-white/10 rounded-[28px] md:rounded-[36px] p-4 sm:p-6 md:p-8 flex flex-col shadow-2xl relative animate-in fade-in">
            {/* BARRA DE NAVEGACIÓN DE ATLETAS: REGRESAR / ANTERIOR / SIGUIENTE */}
            <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-white/5">
               <button
@@ -849,13 +859,13 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               </div>
            </div>
            
-           <div className="flex gap-6 mb-6">
-              <button onClick={() => setTab('profile')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${tab === 'profile' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Ficha & Control</button>
-              <button onClick={() => setTab('calendar')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${tab === 'calendar' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Calendario / Edición</button>
-              <button onClick={() => setTab('history')} className={`pb-2 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${tab === 'history' ? 'border-red-600 text-white' : 'border-transparent text-white/30'}`}>Historial & RPE 📊</button>
+           <div className="flex gap-4 md:gap-6 mb-5 border-b border-white/5 overflow-x-auto no-scrollbar">
+              <button onClick={() => setTab('profile')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'profile' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Ficha & Control</button>
+              <button onClick={() => setTab('calendar')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'calendar' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Calendario / Edición</button>
+              <button onClick={() => setTab('history')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'history' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Historial & RPE 📊</button>
            </div>
 
-           <div className="flex-1 overflow-y-auto custom-scrollbar">
+           <div className="space-y-6">
               {tab === 'profile' && (
                  <div className="space-y-6">
                     {/* CREDENCIALES DE ACCESO DEL ATLETA */}
@@ -895,14 +905,35 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                         </div>
                     </div>
 
-                    <div className="bg-[#1A1A1D] rounded-3xl p-6 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                    <div className={`rounded-3xl p-5 md:p-6 border flex flex-wrap items-center justify-between gap-4 ${isAthleteExpired(selectedAthlete) ? 'bg-amber-950/30 border-amber-500/40' : 'bg-[#1A1A1D] border-white/5'}`}>
                         <div>
-                            <h3 className="text-lg font-black uppercase italic">
-                              {selectedAthlete.isActive !== false ? '✅ Acceso Activo' : '⛔ Acceso Pausado'}
+                            <h3 className="text-base md:text-lg font-black uppercase italic">
+                              {selectedAthlete.isActive === false
+                                ? '⛔ Acceso Pausado'
+                                : isAthleteExpired(selectedAthlete)
+                                ? `⚠️ Corte Vencido (${selectedAthlete.cycleEndDate})`
+                                : '✅ Acceso Activo'}
                             </h3>
-                            <p className="text-[10px] opacity-50 uppercase">Pausa o reactiva su entrada a la app en tiempo real</p>
+                            <p className="text-[10px] opacity-60 uppercase">
+                              {isAthleteExpired(selectedAthlete)
+                                ? 'Renueva +30 días o activa Sin Corte para darle acceso'
+                                : 'Pausa o reactiva su entrada a la app en tiempo real'}
+                            </p>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                            {isAthleteExpired(selectedAthlete) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next30 = new Date(Date.now() + 30 * 86400000);
+                                  const nextIso = `${next30.getFullYear()}-${String(next30.getMonth() + 1).padStart(2, '0')}-${String(next30.getDate()).padStart(2, '0')}`;
+                                  handleUpdateUser({ isActive: true, cycleEndDate: nextIso });
+                                }}
+                                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                              >
+                                🔄 Renovar +30 días
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleUpdateUser({ isUnlimited: !selectedAthlete.isUnlimited, accessTier: !selectedAthlete.isUnlimited ? 'vip_sin_corte' : 'regular' })}
@@ -920,7 +951,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                         </div>
                     </div>
 
-                    <div className="bg-black/20 rounded-3xl p-6 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                    <div className="bg-black/20 rounded-3xl p-5 md:p-6 border border-white/5 flex flex-wrap items-center justify-between gap-4">
                         <div className="flex-1 min-w-[200px] space-y-2">
                             <label className="text-[9px] font-black opacity-40 uppercase tracking-widest block">
                               {selectedAthlete.isUnlimited ? 'Vigencia (Perfil Sin Corte ∞)' : 'Fecha de Corte / Fin de Membresía'}

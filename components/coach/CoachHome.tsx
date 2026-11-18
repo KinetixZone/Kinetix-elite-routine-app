@@ -32,7 +32,7 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
   const criticalInsights = insights.filter(i => i.status === 'critical' || i.status === 'warning');
 
   return (
-    <div className="pt-20 pb-32 px-4 md:px-6 max-w-7xl mx-auto min-h-screen animate-in fade-in duration-700">
+    <div className="pt-6 md:pt-8 pb-28 px-4 md:px-6 max-w-7xl mx-auto min-h-screen animate-in fade-in duration-700">
       
       {/* HEADER TÁCTICO */}
       <div className="mb-10 md:mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">

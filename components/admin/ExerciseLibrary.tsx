@@ -230,7 +230,7 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
 
   const containerClasses = isEmbedded
     ? "space-y-6"
-    : "pt-20 pb-32 px-4 md:px-8 max-w-7xl mx-auto min-h-screen";
+    : "pt-6 md:pt-8 pb-28 px-4 md:px-8 max-w-7xl mx-auto min-h-screen";
 
   return (
     <div className={containerClasses}>
