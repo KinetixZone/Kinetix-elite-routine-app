@@ -75,6 +75,7 @@ export interface User {
   age?: number;
   weight?: number;
   medicalConditions?: string;
+  coachNote?: string;
   prHistory?: PRRecord[];
   preferredUnit?: 'kg' | 'lbs';
 }

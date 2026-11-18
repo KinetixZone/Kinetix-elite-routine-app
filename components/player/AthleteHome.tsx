@@ -3,7 +3,6 @@ import { User, Workout, PRRecord } from '../../types/kinetix';
 import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
 import { storageService } from '../../services/storageService';
-import { aiService } from '../../services/aiService';
 import { EXERCISES_DB } from '../../constants/exercises';
 import { PWAInstallButton } from '../ui/PWAInstallButton';
 
@@ -543,21 +542,16 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                     </div>
                  )}
 
-                 {/* DIRECTRIZ DEL COACH SINCRONIZADA (LECTURA ZERO-TOKENS PARA ATLETA) */}
+                 {/* NOTA DEL COACH SINCRONIZADA (LECTURA 0-TOKENS PARA ATLETA) */}
                  {user.isActive && (() => {
-                   const cachedCue = aiService.getCachedDirective(user.id);
-                   if (!cachedCue?.primaryDirective) return null;
+                   const coachNote = user.coachNote?.trim() || currentWorkout?.exercises?.find(ex => ex.coachCue?.trim())?.coachCue?.trim();
+                   if (!coachNote) return null;
                    return (
                      <section className="bg-[#0F0F11] border border-cyan-500/30 rounded-3xl p-5 flex items-start gap-3.5">
                        <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-lg shrink-0">🎯</div>
                        <div className="min-w-0 space-y-1">
-                         <div className="flex flex-wrap items-center gap-2">
-                           <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400">Directriz de tu Coach · {cachedCue.headline}</p>
-                         </div>
-                         <p className="text-xs text-white/90 font-semibold leading-relaxed">{cachedCue.primaryDirective}</p>
-                         {cachedCue.loadAdjustment && (
-                           <p className="text-[11px] text-white/55">{cachedCue.loadAdjustment}</p>
-                         )}
+                         <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400">Nota de tu Coach · Lic. Jorge González</p>
+                         <p className="text-xs text-white/90 font-semibold leading-relaxed whitespace-pre-line">{coachNote}</p>
                        </div>
                      </section>
                    );

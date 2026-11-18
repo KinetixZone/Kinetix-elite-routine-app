@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { User, Workout, Goal, UserLevel, CalendarEvent, SessionFeedback, WorkoutExercise } from '../../types/kinetix';
 import { storageService, generateUsernameFromName } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
-import { aiService, CoachDirectiveResult } from '../../services/aiService';
+import { aiService, COACH_QUICK_NOTES } from '../../services/aiService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
 
 // --- SUB-COMPONENT: ATHLETE FORM MODAL (ALTA/EDICIÓN) ---
@@ -469,12 +469,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [confirmDeleteAthleteId, setConfirmDeleteAthleteId] = useState<string | null>(null);
   const [confirmRemoveExerciseIdx, setConfirmRemoveExerciseIdx] = useState<number | null>(null);
 
-  // Directriz del Coach (Gemini 4 Backend + Caché por Historial para 0 desperdicio de tokens)
-  const [directiveResult, setDirectiveResult] = useState<CoachDirectiveResult | null>(null);
-  const [directiveLoading, setDirectiveLoading] = useState(false);
-  const [directiveError, setDirectiveError] = useState<string | null>(null);
-  const [autoSyncGemini, setAutoSyncGemini] = useState<boolean>(() => aiService.getAutoSyncEnabled());
-  const [geminiConfigured, setGeminiConfigured] = useState<boolean>(false);
+  // Directriz y Notas del Coach (100% Sin IA · 0 Tokens)
+  const [coachNoteDraft, setCoachNoteDraft] = useState<string>('');
 
   useEffect(() => {
     const focusId = localStorage.getItem('kinetix_focus_athlete_id');
@@ -488,7 +484,6 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       setSelectedAthlete(list[0]);
     }
     loadTemplates();
-    aiService.checkServerHealth().then(h => setGeminiConfigured(h.geminiConfigured));
     Promise.all([
       storageService.syncAthletesFromCloud(),
       calendarService.syncCalendarFromCloud(),
@@ -501,6 +496,10 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    setCoachNoteDraft(selectedAthlete?.coachNote || '');
+  }, [selectedAthlete?.id, selectedAthlete?.coachNote]);
 
   const loadTemplates = async () => {
     const all = await storageService.getTemplates();
@@ -541,52 +540,30 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     return Object.values(sessionsMap).sort((a, b) => b.date.localeCompare(a.date));
   }, [selectedAthlete, calendarTrigger]);
 
-  // Directriz del Coach: siempre inicia en 0 tokens con línea base local y auto-sincroniza con Gemini únicamente cuando cambia el historial del atleta
-  const runCoachDirective = async (athlete: User, forceRefresh = false) => {
-    const allLogs = storageService.getAllLogs();
-    const prs = storageService.getPRs();
-    setDirectiveLoading(true);
-    setDirectiveError(null);
-    try {
-      const res = await aiService.generateCoachDirective(athlete, allLogs, prs, forceRefresh);
-      setDirectiveResult(res);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'No se pudo conectar con Gemini.';
-      setDirectiveError(message);
-    } finally {
-      setDirectiveLoading(false);
-    }
+  // Análisis local por historial y RPE (0 llamadas API · 0 tokens)
+  const localDirective = useMemo(() => {
+    if (!selectedAthlete) return null;
+    const digest = aiService.buildHistoryDigest(selectedAthlete, storageService.getAllLogs(), storageService.getPRs());
+    return aiService.getDeterministicBaseline(digest);
+  }, [selectedAthlete, completedSessions.length]);
+
+  const handleAppendQuickCue = (cue: string) => {
+    setCoachNoteDraft(prev => {
+      const cleanPrev = prev.trim();
+      if (!cleanPrev) return cue;
+      if (cleanPrev.includes(cue)) return cleanPrev;
+      return `${cleanPrev}\n${cue}`;
+    });
   };
 
-  useEffect(() => {
+  const handleSaveCoachNote = async () => {
     if (!selectedAthlete) return;
-    const allLogs = storageService.getAllLogs();
-    const prs = storageService.getPRs();
-    const digest = aiService.buildHistoryDigest(selectedAthlete, allLogs, prs);
-    const cached = aiService.getCachedDirective(selectedAthlete.id);
-    const baseline = aiService.getDeterministicBaseline(digest);
+    await handleUpdateUser({ coachNote: coachNoteDraft.trim() });
+  };
 
-    if (cached) {
-      setDirectiveResult({ ...cached, source: cached.historyHash === digest.historyHash ? 'cache' : cached.source });
-    } else {
-      setDirectiveResult(baseline);
-    }
-    setDirectiveError(null);
-
-    const sysConfig = storageService.getSystemConfig();
-    if (
-      tab === 'history' &&
-      autoSyncGemini &&
-      geminiConfigured &&
-      sysConfig.enableAI !== false &&
-      (!cached || cached.historyHash !== digest.historyHash)
-    ) {
-      runCoachDirective(selectedAthlete, false);
-    }
-  }, [selectedAthlete?.id, tab, completedSessions.length, autoSyncGemini, geminiConfigured]);
-
-  const applyDirectiveToUpcomingWorkout = async () => {
-    if (!selectedAthlete || !directiveResult?.primaryDirective) return;
+  const applyDirectiveToUpcomingWorkout = async (customCue?: string) => {
+    const cueToApply = (customCue ?? coachNoteDraft).trim() || localDirective?.primaryDirective;
+    if (!selectedAthlete || !cueToApply) return;
     const events = calendarService
       .getEvents()
       .filter(e => e.athleteIds.includes(selectedAthlete.id) && e.type === 'workout' && e.workoutTemplateId)
@@ -594,7 +571,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     const todayIso = storageService.getLocalTodayIso();
     const nextEvt = events.find(e => e.start.split('T')[0] >= todayIso) || events[events.length - 1];
     if (!nextEvt || !nextEvt.workoutTemplateId) {
-      setToastMsg('Asigna primero una rutina en el Calendario para aplicarle esta directriz.');
+      setToastMsg('Asigna primero una rutina en el Calendario para aplicarle esta nota.');
       setTimeout(() => setToastMsg(null), 4000);
       return;
     }
@@ -609,10 +586,10 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     const cloned: Workout = JSON.parse(JSON.stringify(targetWorkout));
     cloned.exercises[0] = {
       ...cloned.exercises[0],
-      coachCue: directiveResult.primaryDirective
+      coachCue: cueToApply
     };
     await storageService.saveUserSpecificWorkout(cloned);
-    setToastMsg(`✅ Directriz aplicada a "${cloned.name}" (${nextEvt.start.split('T')[0]})`);
+    setToastMsg(`✅ Nota aplicada a "${cloned.name}" (${nextEvt.start.split('T')[0]})`);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
@@ -1088,6 +1065,84 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                         )}
                     </div>
 
+                    {/* NOTAS TÉCNICAS & DIRECTRIZ DEL COACH (0 TOKENS · SIN IA) */}
+                    <div className="bg-[#121218] rounded-3xl p-5 md:p-6 border border-cyan-500/25 space-y-4">
+                        <div className="flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                                <h4 className="text-xs md:text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                                    <span>🎯</span> Notas Técnicas para {selectedAthlete.name.split(' ')[0]}
+                                </h4>
+                                <p className="text-[10px] text-white/50 mt-0.5">
+                                    Recordatorios biomecánicos directos (ej. postura de hombros, tempo o RIR). Se guarda en su ficha sin usar IA.
+                                </p>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[8px] font-black uppercase tracking-wider">
+                                Sin IA · 0 Tokens
+                            </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                            {COACH_QUICK_NOTES.map(item => (
+                                <button
+                                    key={item.label}
+                                    type="button"
+                                    onClick={() => handleAppendQuickCue(item.cue)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-cyan-600/25 text-white/75 hover:text-cyan-200 border border-white/10 hover:border-cyan-500/40 text-[9px] font-bold transition-all"
+                                    title={item.cue}
+                                >
+                                    + {item.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <textarea
+                            rows={3}
+                            value={coachNoteDraft}
+                            onChange={e => setCoachNoteDraft(e.target.value)}
+                            placeholder="Escribe aquí indicaciones personalizadas para el atleta (ej: Mantén el hombro abajo y atrás en press, bajada controlada 3 seg)..."
+                            className="w-full bg-black/70 border border-white/15 focus:border-cyan-500 rounded-2xl p-3.5 text-xs text-white placeholder-white/30 outline-none resize-y"
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleSaveCoachNote}
+                                    className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                                >
+                                    💾 Guardar Nota en Ficha
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => applyDirectiveToUpcomingWorkout()}
+                                    className="px-4 py-2.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 text-[9px] font-black uppercase tracking-wider transition-all"
+                                >
+                                    📋 Aplicar a Próxima Rutina
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {localDirective && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCoachNoteDraft(localDirective.primaryDirective)}
+                                        className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 text-[9px] font-black uppercase tracking-wider border border-white/10 transition-all"
+                                    >
+                                        ⚡ Sugerir por Historial
+                                    </button>
+                                )}
+                                {coachNoteDraft && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCoachNoteDraft('')}
+                                        className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white text-[9px] font-black uppercase"
+                                    >
+                                        Limpiar
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* CONTROL DE MESOCICLO & ADHERENCIA */}
                     <div className="bg-[#121215] rounded-3xl p-6 border border-white/5 space-y-4">
                         <div className="flex justify-between items-center">
@@ -1173,112 +1228,68 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               
               {tab === 'history' && (
                  <div className="space-y-6">
-                    {/* SECCIÓN: DIRECTRIZ DEL COACH CON GEMINI + MODO AUTO-EFICIENTE */}
-                    <div className="bg-gradient-to-br from-[#14141A] to-[#0A0A0D] border border-cyan-500/30 rounded-3xl p-5 md:p-6 space-y-4 shadow-[0_0_25px_rgba(0,240,255,0.07)]">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3.5">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-base">🎯</span>
-                            <h3 className="text-sm md:text-base font-black uppercase italic text-white tracking-tight">Directriz del Coach</h3>
-                            <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border ${
-                              directiveResult?.source === 'gemini' || directiveResult?.source === 'cache'
-                                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40'
-                                : 'bg-white/10 text-white/70 border-white/15'
-                            }`}>
-                              {directiveResult?.source === 'gemini'
-                                ? 'Gemini 4 Vivo'
-                                : directiveResult?.source === 'cache'
-                                ? 'Gemini Cache · 0 Tokens'
-                                : 'Offline · 0 Tokens'}
-                            </span>
+                    {/* SECCIÓN: DIRECTRIZ LOCAL DEL COACH + NOTA RÁPIDA (0 TOKENS · SIN IA) */}
+                    {localDirective && (
+                      <div className="bg-gradient-to-br from-[#14141A] to-[#0A0A0D] border border-cyan-500/30 rounded-3xl p-5 md:p-6 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3.5">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-base">🎯</span>
+                              <h3 className="text-sm md:text-base font-black uppercase italic text-white tracking-tight">Directriz del Coach</h3>
+                              <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border bg-emerald-500/15 text-emerald-300 border-emerald-500/40">
+                                Sin IA · 0 Tokens
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-white/50 mt-0.5">
+                              Diagnóstico automático local según RPE, fatiga y descanso real del atleta.
+                            </p>
                           </div>
-                          <p className="text-[10px] text-white/50 mt-0.5">
-                            Análisis automático del historial y RPE. Solo consulta Gemini cuando hay sesiones nuevas registradas.
-                          </p>
-                        </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="flex items-center gap-2 px-3 py-2 rounded-xl bg-black/50 border border-white/10 cursor-pointer text-[9px] font-black uppercase text-white/70">
-                            <input
-                              type="checkbox"
-                              checked={autoSyncGemini}
-                              onChange={e => {
-                                const val = e.target.checked;
-                                setAutoSyncGemini(val);
-                                aiService.setAutoSyncEnabled(val);
-                              }}
-                              className="w-3.5 h-3.5 accent-cyan-400 rounded"
-                            />
-                            Auto al cambiar historial
-                          </label>
                           <button
                             type="button"
-                            disabled={directiveLoading}
-                            onClick={() => selectedAthlete && runCoachDirective(selectedAthlete, true)}
-                            className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 text-[9px] font-black uppercase tracking-wider transition-all disabled:opacity-40"
+                            onClick={() => {
+                              setCoachNoteDraft(localDirective.primaryDirective);
+                              setTab('profile');
+                            }}
+                            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-cyan-600/25 text-cyan-300 border border-cyan-500/30 text-[9px] font-black uppercase tracking-wider transition-all"
                           >
-                            {directiveLoading ? 'Analizando historial...' : '✨ Generar con Gemini'}
+                            ✎ Editar Nota Técnica
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-1.5">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400">{localDirective.headline}</p>
+                            <p className="text-xs text-white font-semibold leading-relaxed">
+                              {coachNoteDraft.trim() || localDirective.primaryDirective}
+                            </p>
+                          </div>
+                          <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-2 text-[11px]">
+                            <div>
+                              <span className="text-[9px] font-black uppercase text-red-400 block">Ajuste de Carga / RIR</span>
+                              <p className="text-white/80">{localDirective.loadAdjustment}</p>
+                            </div>
+                            <div className="pt-1.5 border-t border-white/5">
+                              <span className="text-[9px] font-black uppercase text-emerald-400 block">Recuperación & Fatiga</span>
+                              <p className="text-white/70">{localDirective.recoveryAlert}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <span className="text-[9px] font-mono text-white/40">
+                            {localDirective.model}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => applyDirectiveToUpcomingWorkout(coachNoteDraft.trim() || localDirective.primaryDirective)}
+                            className="px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 text-[9px] font-black uppercase tracking-wider transition-all"
+                          >
+                            📋 Aplicar a Próxima Rutina
                           </button>
                         </div>
                       </div>
-
-                      {directiveError && (
-                        <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-[10px] text-amber-200 font-semibold flex items-center justify-between gap-2">
-                          <span>ℹ️ {directiveError} (Mostrando análisis local 0-tokens)</span>
-                          <button type="button" onClick={() => setDirectiveError(null)} className="text-amber-300 px-1.5">✕</button>
-                        </div>
-                      )}
-
-                      {directiveResult && (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-1.5">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400">{directiveResult.headline}</p>
-                              <p className="text-xs text-white font-semibold leading-relaxed">
-                                {directiveResult.primaryDirective}
-                              </p>
-                            </div>
-                            <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-2 text-[11px]">
-                              <div>
-                                <span className="text-[9px] font-black uppercase text-red-400 block">Ajuste de Carga / RIR</span>
-                                <p className="text-white/80">{directiveResult.loadAdjustment}</p>
-                              </div>
-                              <div className="pt-1.5 border-t border-white/5">
-                                <span className="text-[9px] font-black uppercase text-emerald-400 block">Recuperación & Fatiga</span>
-                                <p className="text-white/70">{directiveResult.recoveryAlert}</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {directiveResult.suggestions && directiveResult.suggestions.length > 0 && (
-                            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 space-y-1.5">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Sugerencias Semanales</p>
-                              <ul className="space-y-1">
-                                {directiveResult.suggestions.map((s, idx) => (
-                                  <li key={idx} className="text-[11px] text-white/80 flex items-start gap-2">
-                                    <span className="text-cyan-400 font-black">•</span>
-                                    <span>{s}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                            <span className="text-[9px] font-mono text-white/35">
-                              Motor: {directiveResult.model}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={applyDirectiveToUpcomingWorkout}
-                              className="px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 text-[9px] font-black uppercase tracking-wider transition-all"
-                            >
-                              📋 Aplicar a Próxima Rutina
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    )}
 
                     <div className="flex justify-between items-center pb-2 border-b border-white/5">
                         <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] italic">Bitácora de Rendimiento</p>

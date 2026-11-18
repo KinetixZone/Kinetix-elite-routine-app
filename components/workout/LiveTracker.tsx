@@ -773,9 +773,14 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                   {/* DIRECTRIZ AUTOMÁTICA DEL COACH (100% SIN IA · 0 TOKENS) */}
                   <div className="bg-red-500/10 border border-red-500/30 px-4 py-3 rounded-2xl text-[11px] text-red-300 font-bold tracking-wide flex items-start gap-2.5">
                     <span className="shrink-0">💡</span>
-                    <div>
-                      <span className="font-black text-white/60 text-[9px] uppercase tracking-widest block mb-0.5">Directriz del Coach · Lic. Jorge González</span>
-                      <span className="normal-case text-white/85 font-semibold leading-snug">{getSmartCoachDirective(ex, dbEx)}</span>
+                    <div className="space-y-1">
+                      <span className="font-black text-white/60 text-[9px] uppercase tracking-widest block">Directriz del Coach · Lic. Jorge González</span>
+                      <span className="normal-case text-white/85 font-semibold leading-snug block">{getSmartCoachDirective(ex, dbEx)}</span>
+                      {user?.coachNote?.trim() && (
+                        <span className="normal-case text-cyan-300 font-semibold leading-snug block pt-1 border-t border-white/10">
+                          Nota personal: {user.coachNote.trim()}
+                        </span>
+                      )}
                     </div>
                   </div>
 

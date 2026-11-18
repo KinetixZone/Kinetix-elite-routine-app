@@ -164,7 +164,7 @@ class StorageService {
 
   getSystemConfig() {
       const data = localStorage.getItem(KEYS.SYSTEM_CONFIG);
-      return data ? JSON.parse(data) : { enableAI: true, enableCloud: true };
+      return data ? JSON.parse(data) : { enableAI: false, enableCloud: true };
   }
 
   saveUser(user: User) { localStorage.setItem(KEYS.USER, JSON.stringify(user)); }
@@ -217,6 +217,7 @@ class StorageService {
       age: row.age ?? undefined,
       weight: row.weight ?? undefined,
       medicalConditions: row.medical_conditions || '',
+      coachNote: row.coach_notes || '',
       preferredUnit: row.preferred_unit || 'kg',
       createdAt: row.created_at || new Date().toISOString()
     };
@@ -287,13 +288,38 @@ class StorageService {
       age: normalizedUser.age || null,
       weight: normalizedUser.weight || null,
       medical_conditions: normalizedUser.medicalConditions || '',
+      coach_notes: normalizedUser.coachNote || '',
       preferred_unit: normalizedUser.preferredUnit || 'kg'
     };
 
     try {
       const { error } = await supabase.from('athletes').upsert(fullPayload);
       if (error) {
-        // Fallback para tablas v7.2 que aún no ejecutan el SQL v7.3
+        // Fallback seguro si la columna coach_notes o v7.3 aún no se ejecuta en Supabase
+        const v73Payload = {
+          id: normalizedUser.id,
+          name: normalizedUser.name,
+          username: normalizedUser.username,
+          email: normalizedUser.email,
+          password: normalizedUser.password,
+          goal: normalizedUser.goal,
+          level: normalizedUser.level,
+          role: normalizedUser.role,
+          days_per_week: normalizedUser.daysPerWeek || 4,
+          equipment: normalizedUser.equipment || [],
+          is_active: normalizedUser.isActive !== false,
+          is_unlimited: !!normalizedUser.isUnlimited,
+          access_tier: normalizedUser.accessTier || (normalizedUser.isUnlimited ? 'vip_sin_corte' : 'regular'),
+          streak: normalizedUser.streak || 0,
+          cycle_end_date: normalizedUser.cycleEndDate || null,
+          age: normalizedUser.age || null,
+          weight: normalizedUser.weight || null,
+          medical_conditions: normalizedUser.medicalConditions || '',
+          preferred_unit: normalizedUser.preferredUnit || 'kg'
+        };
+        const retry73 = await supabase.from('athletes').upsert(v73Payload);
+        if (!retry73.error) return { ok: true };
+
         const corePayload = {
           id: normalizedUser.id,
           name: normalizedUser.name,
@@ -309,7 +335,7 @@ class StorageService {
         };
         const retry = await supabase.from('athletes').upsert(corePayload);
         if (retry.error) return { ok: false, error: retry.error.message };
-        return { ok: true, error: 'Actualiza el SQL v7.3 en Admin > Sistema para sincronizar usuarios/claves en todos los dispositivos.' };
+        return { ok: true, error: 'Actualiza el SQL en Sistema para sincronizar notas y claves en todos los dispositivos.' };
       }
       return { ok: true };
     } catch (e: any) {
@@ -474,7 +500,23 @@ class StorageService {
     return merged;
   }
 
-  // NUEVO: saveTemplate ahora es asíncrono para subir a Supabase
+  private toCloudTemplatePayload(tpl: Workout) {
+    return {
+      id: tpl.id,
+      name: tpl.name,
+      publicTitle: tpl.publicTitle || tpl.name,
+      category: tpl.category || 'general',
+      day: tpl.day || 1,
+      exercises: Array.isArray(tpl.exercises) ? tpl.exercises : [],
+      isCompleted: !!tpl.isCompleted,
+      scheduledDate: tpl.scheduledDate || null,
+      isTemplate: tpl.isTemplate !== false,
+      assignedTo: tpl.assignedTo || null,
+      location: tpl.location || 'Kinetix Functional Zone'
+    };
+  }
+
+  // NUEVO: saveTemplate limpia campos extra antes de subir a Supabase para evitar rechazos o basura
   async saveTemplate(template: Workout) {
     const deletedIds = this.getDeletedTemplateIds().filter(id => id !== template.id);
     localStorage.setItem('kinetix_deleted_templates', JSON.stringify(deletedIds));
@@ -486,7 +528,7 @@ class StorageService {
 
     if (isSupabaseConfigured) {
         try {
-            await supabase.from('kinetix_templates').upsert(template);
+            await supabase.from('kinetix_templates').upsert(this.toCloudTemplatePayload(template));
         } catch (e) { console.error("Error al sincronizar con Nube", e); }
     }
   }
@@ -511,7 +553,7 @@ class StorageService {
     if (isSupabaseConfigured) {
       try {
         for (const tpl of templates) {
-          await supabase.from('kinetix_templates').upsert(tpl);
+          await supabase.from('kinetix_templates').upsert(this.toCloudTemplatePayload(tpl));
         }
       } catch (e) { console.error("Error al sincronizar restauración", e); }
     }
@@ -650,7 +692,11 @@ class StorageService {
       return log;
     });
 
-    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([...currentLogs, ...processedLogs]));
+    // Evita acumulación de basura en localStorage manteniendo máximo 250 logs recientes
+    const trimmedLogs = [...currentLogs, ...processedLogs]
+      .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+      .slice(0, 250);
+    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(trimmedLogs));
 
     if (isSupabaseConfigured && processedLogs.length > 0) {
       const cloudRows = processedLogs.map(l => ({
@@ -864,17 +910,50 @@ class StorageService {
       }
   }
 
-  init(d: any) {
-    // Seed initial body metrics if none exist
-    if (!localStorage.getItem(KEYS.BODY_METRICS)) {
-      const today = new Date();
-      const defaultMetrics: BodyMetric[] = [
-        { date: new Date(today.getTime() - 14 * 86400000).toISOString().split('T')[0], weight: 79.2, bodyFat: 15.2, waist: 82, chest: 101, arm: 38, thigh: 59 },
-        { date: new Date(today.getTime() - 7 * 86400000).toISOString().split('T')[0], weight: 78.6, bodyFat: 14.8, waist: 81, chest: 102, arm: 38.5, thigh: 59.5 },
-        { date: today.toISOString().split('T')[0], weight: 78.0, bodyFat: 14.4, waist: 80, chest: 102.5, arm: 39, thigh: 60 }
-      ];
-      localStorage.setItem(KEYS.BODY_METRICS, JSON.stringify(defaultMetrics));
+  cleanupStaleData(): { removedKeys: number; removedTemplates: number } {
+    const todayStr = this.getLocalTodayIso();
+    let removedKeys = 0;
+    let removedTemplates = 0;
+
+    try {
+      const keysToDelete: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('kinetix_locked_') && !key.endsWith(`_${todayStr}`)) {
+          keysToDelete.push(key);
+        } else if (key === KEYS.AI_PROMPT_HISTORY || key === KEYS.AI_BLUEPRINTS || key.startsWith('kinetix_coach_directive_v2_')) {
+          keysToDelete.push(key);
+        }
+      }
+      keysToDelete.forEach(k => localStorage.removeItem(k));
+      removedKeys = keysToDelete.length;
+
+      // Limpiar instancias temporales vacías antiguas (class-*) o duplicadas > 14 días atrás
+      const cutoffDate = new Date(Date.now() - 14 * 86400000);
+      const cutoffIso = this.getLocalTodayIso(cutoffDate);
+      const rawTpls = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
+      if (rawTpls) {
+        const parsed: Workout[] = JSON.parse(rawTpls);
+        const cleaned = parsed.filter(t => {
+          const isOldInstance = t.isTemplate === false && t.scheduledDate && t.scheduledDate < cutoffIso && (!t.exercises || t.exercises.length === 0);
+          if (isOldInstance) removedTemplates++;
+          return !isOldInstance;
+        });
+        if (removedTemplates > 0) {
+          localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(cleaned));
+        }
+      }
+    } catch {
+      // Ignore cleanup errors
     }
+
+    return { removedKeys, removedTemplates };
+  }
+
+  init(d: any) {
+    // Limpieza automática de llaves caducadas / caché basura sin tocar datos reales
+    this.cleanupStaleData();
   }
 
   saveStaff(s: any) {}

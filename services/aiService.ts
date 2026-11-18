@@ -27,6 +27,22 @@ export interface HistoryDigest {
   historyHash: string;
 }
 
+export interface QuickCoachNote {
+  label: string;
+  cue: string;
+}
+
+export const COACH_QUICK_NOTES: QuickCoachNote[] = [
+  { label: 'Hombros atrás/abajo', cue: 'Mantén los hombros abajo y retraídos (lejos de las orejas) durante toda la serie.' },
+  { label: 'Codos a 45°', cue: 'Controla los codos a 45° respecto al torso; evita abrirlos de más o bloquear al máximo.' },
+  { label: 'Excéntrica 3 seg', cue: 'Baja controlado en 3 segundos en cada repetición y sube con firmeza sin rebotar.' },
+  { label: 'Core & Lumbar firme', cue: 'Activa el abdomen antes de cada rep y evita arquear la espalda baja.' },
+  { label: 'Rodillas alineadas', cue: 'Empuja rodillas ligeramente hacia afuera alineadas con la punta del pie; talón firme.' },
+  { label: 'Escápulas firmes', cue: 'Inicia el tirón juntando escápulas antes de flexionar los brazos.' },
+  { label: 'RIR 2 · Técnica', cue: 'Deja 2 repeticiones en recámara (RIR 2). Prioriza técnica limpia sobre más peso.' },
+  { label: 'Respiración / Bracing', cue: 'Inhala y bloquea el abdomen antes de bajar; exhala al completar el esfuerzo.' }
+];
+
 const DIRECTIVE_CACHE_PREFIX = 'kinetix_coach_directive_v2_';
 const AUTO_SYNC_KEY = 'kinetix_gemini_auto_sync';
 
@@ -34,12 +50,12 @@ class AiService {
   private inflight = new Map<string, Promise<CoachDirectiveResult>>();
   private cachedHealth: { geminiConfigured: boolean; model: string; checkedAt: number } | null = null;
 
+  // IA desactivada por defecto para garantizar 0 consumo de tokens
   getAutoSyncEnabled(): boolean {
     try {
-      const val = localStorage.getItem(AUTO_SYNC_KEY);
-      return val === null ? true : val === 'true';
+      return localStorage.getItem(AUTO_SYNC_KEY) === 'true';
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -170,7 +186,7 @@ class AiService {
           'Registra cada serie y tu RPE real al finalizar para calibrar progresiones.',
           `Alinea el volumen inicial a ${digest.daysPerWeek} días/semana según objetivo (${goal}).`
         ],
-        model: 'Motor Kinetix Offline (0 tokens)',
+        model: 'Motor Kinetix Local (0 tokens)',
         generatedAt: new Date().toISOString(),
         historyHash: digest.historyHash,
         source: 'local'
@@ -187,7 +203,7 @@ class AiService {
           'Prioriza calidad de sueño (7.5h+) e hidratación antes de la próxima sesión.',
           'Evalúa una semana de descarga si el RPE se sostiene >= 9 en la siguiente sesión.'
         ],
-        model: 'Motor Kinetix Offline (0 tokens)',
+        model: 'Motor Kinetix Local (0 tokens)',
         generatedAt: new Date().toISOString(),
         historyHash: digest.historyHash,
         source: 'local'
@@ -204,7 +220,7 @@ class AiService {
           'Activa estabilidad de core y movilidad articular durante 8 min previos.',
           'Evita cambios bruscos de volumen hoy para prevenir agujetas excesivas.'
         ],
-        model: 'Motor Kinetix Offline (0 tokens)',
+        model: 'Motor Kinetix Local (0 tokens)',
         generatedAt: new Date().toISOString(),
         historyHash: digest.historyHash,
         source: 'local'
@@ -220,7 +236,7 @@ class AiService {
         'Sube carga progresiva únicamente si completaste todas las reps objetivo con RIR >= 1.',
         `Mantén foco específico hacia tu meta de ${goal}.`
       ],
-      model: 'Motor Kinetix Offline (0 tokens)',
+      model: 'Motor Kinetix Local (0 tokens)',
       generatedAt: new Date().toISOString(),
       historyHash: digest.historyHash,
       source: 'local'

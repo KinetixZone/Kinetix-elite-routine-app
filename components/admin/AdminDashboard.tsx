@@ -36,13 +36,19 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
       setTimeout(() => setAdminNotice(null), 4000);
   };
 
+  const [storageTick, setStorageTick] = useState(0);
+
   useEffect(() => {
-      aiService.checkServerHealth().then(h => setGeminiOnline(h.geminiConfigured));
+      if (config.enableAI) {
+          aiService.checkServerHealth().then(h => setGeminiOnline(h.geminiConfigured));
+      } else {
+          setGeminiOnline(false);
+      }
       const interval = setInterval(() => {
           setServerLoad(prev => Math.min(Math.max(prev + (Math.random() * 4 - 2), 10), 45));
       }, 3000);
       return () => clearInterval(interval);
-  }, []);
+  }, [config.enableAI]);
   
   const systemStatus = useMemo(() => {
       const hasAiKey = geminiOnline;
@@ -51,12 +57,12 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
         supabase: hasSupabase,
         gemini: hasAiKey,
         storage: storageService.getStorageUsage(),
-        aiDiag: !config.enableAI ? 'DESACTIVADO' : hasAiKey ? 'EN LINEA' : 'MODO 0-TOKENS',
+        aiDiag: !config.enableAI ? 'PAUSADO · 0 TOKENS' : hasAiKey ? 'EN LINEA' : 'MODO 0-TOKENS',
         dbDiag: !config.enableCloud ? 'OFFLINE' : hasSupabase ? 'SYNC OK' : 'LOCAL',
         version: '7.0.0-Obsidian',
         owner: currentUser?.name || 'Leslie Barrera & Jorge González (Dueños)'
       };
-  }, [config, currentUser, geminiOnline]);
+  }, [config, currentUser, geminiOnline, storageTick]);
 
   const toggleFeature = (feature: keyof SystemConfig) => {
       const newConfig = { ...config, [feature]: !config[feature] };
@@ -208,6 +214,7 @@ CREATE TABLE IF NOT EXISTS public.athletes (
     age INTEGER,
     weight NUMERIC,
     medical_conditions TEXT,
+    coach_notes TEXT,
     preferred_unit TEXT DEFAULT 'kg',
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -220,6 +227,7 @@ ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS access_tier TEXT DEFAULT 'r
 ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS age INTEGER;
 ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS weight NUMERIC;
 ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS medical_conditions TEXT;
+ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS coach_notes TEXT;
 ALTER TABLE public.athletes ADD COLUMN IF NOT EXISTS preferred_unit TEXT DEFAULT 'kg';
 
 -- 3. TABLA DE CALENDARIO Y ASIGNACIONES (kinetix_calendar)
@@ -352,12 +360,12 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                 </span>
                             </div>
                             <div>
-                                <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Directriz Gemini</h3>
-                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Motor Backend Gemini 4 (Auto-caché por historial).</p>
+                                <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Motor IA (Pausado)</h3>
+                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Pausado para ahorrar tokens. Se usan notas técnicas locales del coach.</p>
                             </div>
                         </div>
                         <button onClick={() => toggleFeature('enableAI')} className="w-full py-4 mt-8 md:mt-10 bg-white text-black rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all active:scale-95">
-                            {config.enableAI ? 'APAGAR' : 'ENCENDER'}
+                            {config.enableAI ? 'APAGAR IA' : 'ENCENDER IA (OPCIONAL)'}
                         </button>
                     </div>
 
@@ -379,10 +387,13 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                         </button>
                     </div>
 
-                    <div className="p-8 md:p-10 rounded-[45px] border border-white/5 bg-[#0F0F11]/60 flex flex-col justify-between">
+                    <div className="p-8 md:p-10 rounded-[45px] border border-white/5 bg-[#0F0F11]/60 flex flex-col justify-between gap-4">
                         <div className="space-y-4 md:space-y-6">
                             <div className="flex justify-between items-start">
                                 <span className="text-4xl md:text-5xl">💾</span>
+                                <span className="text-[7px] md:text-[8px] font-black px-2 py-1 rounded border border-emerald-500/40 text-emerald-400 uppercase">
+                                    {systemStatus.storage.percentage < 90 ? 'Saludable' : 'Saturado'}
+                                </span>
                             </div>
                             <div>
                                 <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Memoria</h3>
@@ -392,9 +403,17 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                 <p className="text-[7px] md:text-[8px] text-white/20 mt-2 uppercase tracking-widest">Uso Local: {systemStatus.storage.usedKB} KB</p>
                             </div>
                         </div>
-                        <div className="w-full p-3 md:p-4 bg-white/5 rounded-2xl text-center border border-white/5">
-                            <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-red-500">Estado: {systemStatus.storage.percentage < 90 ? 'Saludable' : 'Saturado'}</p>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const res = storageService.cleanupStaleData();
+                                setStorageTick(t => t + 1);
+                                notifyAdmin(`🧹 Limpieza completada: ${res.removedKeys} llaves obsoletas y ${res.removedTemplates} borradores vacíos eliminados.`, true);
+                            }}
+                            className="w-full py-3.5 bg-white/5 hover:bg-cyan-600/25 border border-white/10 hover:border-cyan-500/40 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white transition-all"
+                        >
+                            🧹 Purgar Caché Basura
+                        </button>
                     </div>
                 </div>
             )}
