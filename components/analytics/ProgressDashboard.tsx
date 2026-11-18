@@ -20,9 +20,12 @@ const RANK_SYSTEM = [
   { name: 'LEGEND', min: 500000, color: 'text-yellow-500', barColor: 'bg-yellow-500' }
 ];
 
-export const ProgressDashboard: React.FC = () => {
-  // Data Fetching
-  const logs = useMemo(() => storageService.getAllLogs(), []);
+export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId }) => {
+  // Data Fetching scoped to active athlete when provided
+  const logs = useMemo(() => {
+    const all = storageService.getAllLogs();
+    return athleteId ? all.filter(l => !l.athleteId || l.athleteId === athleteId) : all;
+  }, [athleteId]);
   const allExercises = useMemo(() => storageService.getExercises(), []);
 
   // --- PERFORMANCE LOGIC ---
@@ -62,11 +65,12 @@ export const ProgressDashboard: React.FC = () => {
       
       if (uniqueDates.length === 0) return 0;
 
+      const toLocalIso = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const today = toLocalIso(now);
       const yesterdayDate = new Date(now);
       yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterday = yesterdayDate.toISOString().split('T')[0];
+      const yesterday = toLocalIso(yesterdayDate);
 
       const lastWorkout = uniqueDates[0];
       if (lastWorkout !== today && lastWorkout !== yesterday) return 0;
@@ -154,7 +158,7 @@ export const ProgressDashboard: React.FC = () => {
     for (let i = 59; i >= 0; i--) {
       const targetDate = new Date(today);
       targetDate.setDate(today.getDate() - i);
-      const dateStr = targetDate.toISOString().split('T')[0];
+      const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
       const dayLogs = logs.filter(l => l.timestamp.startsWith(dateStr));
       let setTotal = dayLogs.length;
       if (dayLogs.some(l => l.exerciseId === 'kinetix-class-log')) setTotal += 15; 
@@ -344,7 +348,7 @@ export const ProgressDashboard: React.FC = () => {
             </div>
 
             {/* SECCIÓN 4: GRÁFICA DE TONELAJE Y SOBRECARGA PROGRESIVA CON RECHARTS */}
-            <ProgressChart logs={logs} />
+            <ProgressChart logs={logs} athleteId={athleteId} />
 
             {/* SECCIÓN 5: PRs RECIENTES */}
             <div className="bg-[#0F0F11] rounded-[40px] border border-white/5 p-8 shadow-2xl">

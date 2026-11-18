@@ -21,6 +21,28 @@ const parseWeightValue = (input: string | undefined): number => {
   return isNaN(val) ? 0 : val;
 };
 
+const getSmartCoachDirective = (ex: WorkoutExercise, dbEx?: { technique?: string; commonErrors?: string[]; muscleGroup?: string }): string => {
+  if (ex.coachCue && ex.coachCue.trim()) return ex.coachCue.trim();
+  const parts: string[] = [];
+  if (dbEx?.technique) parts.push(dbEx.technique.trim());
+  if (ex.method === 'biserie' || ex.method === 'triserie' || ex.method === 'giant_set') {
+    parts.push('Ejecuta los bloques seguidos sin descanso intermedio; descansa solo al cerrar la ronda.');
+  } else if (ex.method === 'dropset') {
+    parts.push('Al fallar técnicamente, reduce el peso 20-30% de inmediato y continúa sin descanso.');
+  } else if (ex.method === 'ahap' || ex.setType === 'top_set') {
+    parts.push('Serie pesada principal: controla la fase excéntrica y prioriza técnica limpia.');
+  } else if (ex.method === 'tabata' || ex.method === 'emom') {
+    parts.push('Usa el reloj acústico integrado para respetar exactamente los intervalos de trabajo.');
+  }
+  if (dbEx?.commonErrors && dbEx.commonErrors.length > 0) {
+    parts.push(`Evita: ${dbEx.commonErrors[0]}.`);
+  }
+  if (ex.targetRir) {
+    parts.push(`Mantén RIR ${ex.targetRir} (repeticiones en recámara).`);
+  }
+  return parts.join(' ') || 'Controla la fase excéntrica, respira de forma firme y completa todo el rango de movimiento.';
+};
+
 interface TrackingRow {
   type: 'base' | 'drop' | 'interval' | 'pair';
   label: string;
@@ -748,16 +770,14 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     </button>
                   )}
 
-                  {/* COACH TECHNICAL CUE */}
-                  {ex.coachCue && (
-                    <div className="bg-red-500/10 border border-red-500/30 px-4 py-3 rounded-2xl text-[10px] text-red-400 font-bold uppercase tracking-wider flex items-start gap-2">
-                      <span>💡</span>
-                      <div>
-                        <span className="font-black text-white/50 text-[8px] block">DIRECTRIZ DEL COACH:</span>
-                        {ex.coachCue}
-                      </div>
+                  {/* DIRECTRIZ AUTOMÁTICA DEL COACH (100% SIN IA · 0 TOKENS) */}
+                  <div className="bg-red-500/10 border border-red-500/30 px-4 py-3 rounded-2xl text-[11px] text-red-300 font-bold tracking-wide flex items-start gap-2.5">
+                    <span className="shrink-0">💡</span>
+                    <div>
+                      <span className="font-black text-white/60 text-[9px] uppercase tracking-widest block mb-0.5">Directriz del Coach · Lic. Jorge González</span>
+                      <span className="normal-case text-white/85 font-semibold leading-snug">{getSmartCoachDirective(ex, dbEx)}</span>
                     </div>
-                  )}
+                  </div>
 
                   {/* BIOMECHANICAL CHECKLIST */}
                   {dbEx?.technique && (

@@ -3,6 +3,7 @@ import { User, Workout, PRRecord } from '../../types/kinetix';
 import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
 import { storageService } from '../../services/storageService';
+import { aiService } from '../../services/aiService';
 import { EXERCISES_DB } from '../../constants/exercises';
 import { PWAInstallButton } from '../ui/PWAInstallButton';
 
@@ -147,7 +148,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   const isWorkoutEmpty = !currentWorkout || currentWorkout.id === 'empty-state' || currentWorkout.exercises.length === 0;
 
   const todaySummary = useMemo(() => {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = storageService.getLocalTodayIso();
       const todayLogs = storageService
         .getAllLogs()
         .filter(l => l.timestamp && l.timestamp.startsWith(todayStr) && (!l.athleteId || l.athleteId === user.id));
@@ -184,32 +185,42 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
 
   const weeklyHorizon = useMemo(() => {
     const today = new Date();
-    const todayIso = today.toISOString().split('T')[0];
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const tmr = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const tomorrowIso = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
     const dayOfWeek = today.getDay();
-    const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) + weekOffset * 7;
+    const safeOffset = Math.min(0, weekOffset);
+    const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) + safeOffset * 7;
     const monday = new Date(today.getFullYear(), today.getMonth(), diffToMon);
     const allLogs = storageService.getAllLogs();
     const week = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
-        const tplId = calendarService.getScheduledSession(d, user.id);
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const isToday = dateStr === todayIso;
+        const isTomorrow = dateStr === tomorrowIso;
+        const isFuture = dateStr > todayIso;
+        const isPast = dateStr < todayIso;
+        const tplId = (isToday || isTomorrow || isPast) ? calendarService.getScheduledSession(d, user.id) : null;
         const tpl = tplId ? storageService.getWorkoutById(tplId) : undefined;
         const dayLogs = allLogs.filter(l => l.timestamp.startsWith(dateStr) && (!l.athleteId || l.athleteId === user.id));
-        const hasLogs = dayLogs.length > 0 || (dateStr === todayIso && completionStatus.isDone);
-        const focusLabel = tpl
+        const hasLogs = dayLogs.length > 0 || (isToday && completionStatus.isDone);
+        // Seguridad IP: Solo días pasados y únicamente MAÑANA muestran el grupo muscular; días posteriores quedan 100% ocultos
+        const focusLabel = isPast
+          ? (tpl ? getWorkoutMuscleFocus(tpl) : dayLogs.length > 0 ? getWorkoutMuscleFocus(undefined, dayLogs.map(l => l.exerciseId)) : '')
+          : isTomorrow && tpl
           ? getWorkoutMuscleFocus(tpl)
-          : dayLogs.length > 0
-          ? getWorkoutMuscleFocus(undefined, dayLogs.map(l => l.exerciseId))
           : '';
         week.push({
           dayName: ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d.getDay()],
           dayNum: d.getDate(),
           dateStr,
-          isToday: dateStr === todayIso,
-          isFuture: dateStr > todayIso,
-          hasSession: !!tplId,
+          isToday,
+          isTomorrow,
+          isFuture,
+          isPast,
+          hasSession: (isToday || isTomorrow) ? !!tplId : false,
           isDone: hasLogs,
           focusLabel
         });
@@ -261,7 +272,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 text-xs font-bold">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs font-bold">
             {activeTab !== 'train' && (
               <button
                 type="button"
@@ -272,12 +283,20 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
               </button>
             )}
             <PWAInstallButton compact />
-            <span className="text-cyan-400 tabular-nums">🔥 {user.streak || 0} días</span>
+            <span className="text-cyan-400 tabular-nums hidden sm:inline">🔥 {user.streak || 0}</span>
             <button 
               onClick={() => switchTab('profile')}
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-xs font-bold transition-colors whitespace-nowrap"
+              className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-xs font-bold transition-colors whitespace-nowrap"
             >
-              Mi Cuenta
+              Cuenta
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-2.5 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-black transition-colors whitespace-nowrap"
+              title="Cerrar sesión en 1 toque"
+            >
+              Salir
             </button>
           </div>
         </div>
@@ -308,7 +327,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
          {activeTab === 'train' && (
              <div className="space-y-6 animate-in fade-in">
 
-                 {/* CINTA SEMANAL INTERACTIVA */}
+                 {/* CINTA SEMANAL INTERACTIVA (Solo historial pasado + Hoy + Enfoque muscular únicamente de Mañana) */}
                  <section aria-label="Calendario semanal" className="bg-[#0F0F11] border border-white/10 rounded-3xl p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-3">
                        <h2 className="text-xs font-black uppercase tracking-wider text-white/70">Tu Semana de Entrenamiento</h2>
@@ -318,9 +337,9 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                            onClick={() => { setSelectedDayIdx(null); setWeekOffset(w => w - 1); }}
                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] font-black text-white/70 hover:text-white transition-colors"
                          >
-                           ← Anterior
+                           ← Sem. Anterior
                          </button>
-                         {weekOffset !== 0 && (
+                         {weekOffset < 0 && (
                            <button
                              type="button"
                              onClick={() => { setSelectedDayIdx(null); setWeekOffset(0); }}
@@ -329,13 +348,15 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                              Hoy
                            </button>
                          )}
-                         <button
-                           type="button"
-                           onClick={() => { setSelectedDayIdx(null); setWeekOffset(w => w + 1); }}
-                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] font-black text-white/70 hover:text-white transition-colors"
-                         >
-                           Siguiente →
-                         </button>
+                         {weekOffset < 0 && (
+                           <button
+                             type="button"
+                             onClick={() => { setSelectedDayIdx(null); setWeekOffset(w => Math.min(0, w + 1)); }}
+                             className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] font-black text-white/70 hover:text-white transition-colors"
+                           >
+                             Siguiente →
+                           </button>
+                         )}
                        </div>
                     </div>
                     <div className="grid grid-cols-7 gap-1.5">
@@ -356,8 +377,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                              >
                                <span className="text-[10px] font-bold uppercase">{d.dayName}</span>
                                <span className="text-sm font-black tabular-nums">{d.dayNum}</span>
-                               <span className={`text-[9px] font-bold ${d.isDone ? 'text-emerald-400' : d.hasSession ? 'text-cyan-400' : 'text-white/25'}`}>
-                                 {d.isDone ? '✓' : d.hasSession ? '●' : '–'}
+                               <span className={`text-[9px] font-bold ${d.isDone ? 'text-emerald-400' : d.isToday && d.hasSession ? 'text-white' : d.isTomorrow && d.hasSession ? 'text-cyan-400' : 'text-white/25'}`}>
+                                 {d.isDone ? '✓' : d.isToday && d.hasSession ? 'HOY' : d.isTomorrow && d.hasSession ? '●' : '🔒'}
                                </span>
                              </button>
                            );
@@ -368,10 +389,14 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                       <div className="mt-3 p-3.5 rounded-2xl bg-black/70 border border-white/10 text-xs text-white/80 flex items-center justify-between gap-3">
                         <span>
                           {weeklyHorizon[selectedDayIdx].isDone
-                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Entrenaste ${weeklyHorizon[selectedDayIdx].focusLabel || 'tu sesión'} · Sesión completada y archivada.`
-                            : weeklyHorizon[selectedDayIdx].hasSession
-                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Toca ${weeklyHorizon[selectedDayIdx].focusLabel || 'Entrenamiento'} · Rutina bloqueada hasta ese día para proteger tu programación.`
-                            : `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Día de recuperación programado.`}
+                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Entrenaste ${weeklyHorizon[selectedDayIdx].focusLabel || 'tu sesión'} · Sesión archivada.`
+                            : weeklyHorizon[selectedDayIdx].isPast
+                            ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Día de descanso / sin registro.`
+                            : weeklyHorizon[selectedDayIdx].isTomorrow && weeklyHorizon[selectedDayIdx].hasSession
+                            ? `Mañana (${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}): Toca ${weeklyHorizon[selectedDayIdx].focusLabel || 'Entrenamiento'} · Rutina bloqueada hasta mañana.`
+                            : weeklyHorizon[selectedDayIdx].isTomorrow
+                            ? `Mañana (${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}): Recuperación programada.`
+                            : `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: 🔒 Programación privada · Se desbloquea únicamente el día que corresponde entrenar.`}
                         </span>
                         <button onClick={() => setSelectedDayIdx(null)} className="text-white/40 hover:text-white px-2 shrink-0">✕</button>
                       </div>
@@ -518,6 +543,26 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                     </div>
                  )}
 
+                 {/* DIRECTRIZ DEL COACH SINCRONIZADA (LECTURA ZERO-TOKENS PARA ATLETA) */}
+                 {user.isActive && (() => {
+                   const cachedCue = aiService.getCachedDirective(user.id);
+                   if (!cachedCue?.primaryDirective) return null;
+                   return (
+                     <section className="bg-[#0F0F11] border border-cyan-500/30 rounded-3xl p-5 flex items-start gap-3.5">
+                       <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-lg shrink-0">🎯</div>
+                       <div className="min-w-0 space-y-1">
+                         <div className="flex flex-wrap items-center gap-2">
+                           <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400">Directriz de tu Coach · {cachedCue.headline}</p>
+                         </div>
+                         <p className="text-xs text-white/90 font-semibold leading-relaxed">{cachedCue.primaryDirective}</p>
+                         {cachedCue.loadAdjustment && (
+                           <p className="text-[11px] text-white/55">{cachedCue.loadAdjustment}</p>
+                         )}
+                       </div>
+                     </section>
+                   );
+                 })()}
+
                  {/* SOPORTE DIRECTO CON COACH (SIN CONSUMO DE TOKENS IA) */}
                  {user.isActive && (
                      <a
@@ -549,7 +594,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
              </div>
          )}
 
-         {activeTab === 'progress' && <ProgressDashboard />}
+         {activeTab === 'progress' && <ProgressDashboard athleteId={user.id} />}
          
          {activeTab === 'profile' && (
              <div className="space-y-6 animate-in fade-in max-w-2xl mx-auto">

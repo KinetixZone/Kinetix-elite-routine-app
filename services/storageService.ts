@@ -46,6 +46,7 @@ export interface MuscleStatus {
 }
 
 export interface AthleteInsight {
+  athleteId?: string;
   athleteName: string;
   message: string;
   status: 'critical' | 'warning' | 'normal';
@@ -171,7 +172,11 @@ class StorageService {
     const data = localStorage.getItem(KEYS.USER);
     return data ? JSON.parse(data) : null;
   }
-  logout() { localStorage.removeItem(KEYS.USER); }
+  logout() {
+    localStorage.removeItem(KEYS.USER);
+    localStorage.removeItem(KEYS.WORKOUT_TEMPLATES);
+    localStorage.removeItem(KEYS.CALENDAR);
+  }
 
   getAthletes(): User[] {
     const data = localStorage.getItem(KEYS.ATHLETES_DB);
@@ -374,52 +379,106 @@ class StorageService {
 
   saveExercises(exercises: Exercise[]) { localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(exercises)); }
 
-  // NUEVO: getTemplates ahora es asíncrono para consultar Supabase (Sincronización multi-dispositivo)
+  private getDeletedTemplateIds(): string[] {
+    try {
+      return JSON.parse(localStorage.getItem('kinetix_deleted_templates') || '[]');
+    } catch { return []; }
+  }
+
+  async restorePresetTemplates(): Promise<Workout[]> {
+    localStorage.removeItem('kinetix_deleted_templates');
+    const current: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+    const map = new Map<string, Workout>();
+    PRESET_WORKOUT_TEMPLATES.forEach(p => map.set(p.id, p));
+    current.forEach(t => map.set(t.id, t));
+    const merged = Array.from(map.values());
+    localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(merged));
+    if (isSupabaseConfigured) {
+      for (const p of PRESET_WORKOUT_TEMPLATES) {
+        try { await supabase.from('kinetix_templates').upsert(p); } catch {}
+      }
+    }
+    return merged;
+  }
+
+  async getTemplateByIdCloud(id: string): Promise<Workout | undefined> {
+    const local = this.getWorkoutById(id);
+    if (local) return local;
+    const preset = PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
+    if (preset) return preset;
+    if (!isSupabaseConfigured) return undefined;
+    try {
+      const { data, error } = await supabase.from('kinetix_templates').select('*').eq('id', id).maybeSingle();
+      if (!error && data) {
+        const w = data as Workout;
+        const current: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+        const next = [...current.filter(t => t.id !== w.id), w];
+        localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(next));
+        return w;
+      }
+    } catch {}
+    return undefined;
+  }
+
+  // getTemplates ahora combina rutinas base por default + cache local + Supabase sin borrar las preguardadas
   async getTemplates(athleteId?: string): Promise<Workout[]> {
-    let templates: Workout[] = [];
+    let cloudTemplates: Workout[] = [];
 
     // 1. Intentar cargar desde Supabase si está configurado
     if (isSupabaseConfigured) {
         try {
             const query = supabase.from('kinetix_templates').select('*');
             if (athleteId) {
-                // PRIVACIDAD: El atleta solo descarga lo suyo
-                query.or(`assignedTo.eq.${athleteId},category.eq.travel`);
+                // PRIVACIDAD: El atleta solo descarga lo asignado a él
+                query.eq('assignedTo', athleteId);
             }
             const { data, error } = await query;
-            if (!error && data && data.length > 0) {
-                templates = data as Workout[];
-                // Actualizar cache local
-                localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
-                return templates;
+            if (!error && data) {
+                cloudTemplates = data as Workout[];
             }
         } catch (e) { console.warn("Supabase Fetch Error, usando LocalStorage", e); }
     }
 
-    // 2. Fallback a LocalStorage si no hay nube o falla
-    const localData = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
-    if (localData) {
-      try {
-        templates = JSON.parse(localData);
-      } catch (e) {
-        templates = [];
-      }
-    }
-    
-    // Si no hay plantillas, sembrar las plantillas preguardadas maestras
-    if (!templates || templates.length === 0) {
-      templates = [...PRESET_WORKOUT_TEMPLATES];
-      localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
-    }
-    
+    // 2. Cache local
+    let localTemplates: Workout[] = [];
+    try {
+      const localData = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
+      if (localData) localTemplates = JSON.parse(localData);
+    } catch { localTemplates = []; }
+
     if (athleteId) {
-        return templates.filter(t => t.assignedTo === athleteId || t.category === 'travel' || t.isTemplate);
+      // Privacidad estricta: el atleta nunca recibe plantillas maestras de otros ni del coach
+      const map = new Map<string, Workout>();
+      localTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
+      cloudTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
+      const athleteOnly = Array.from(map.values());
+      localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(athleteOnly));
+      return athleteOnly;
     }
-    return templates;
+
+    // Para Coach / Dueño: mantener SIEMPRE las rutinas base por default + rutinas propias locales/nube (salvo las borradas intencionalmente)
+    const deletedIds = new Set(this.getDeletedTemplateIds());
+    const mergedMap = new Map<string, Workout>();
+    PRESET_WORKOUT_TEMPLATES.forEach(p => {
+      if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
+    });
+    localTemplates.forEach(t => {
+      if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+    });
+    cloudTemplates.forEach(t => {
+      if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+    });
+
+    const merged = Array.from(mergedMap.values());
+    localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(merged));
+    return merged;
   }
 
   // NUEVO: saveTemplate ahora es asíncrono para subir a Supabase
   async saveTemplate(template: Workout) {
+    const deletedIds = this.getDeletedTemplateIds().filter(id => id !== template.id);
+    localStorage.setItem('kinetix_deleted_templates', JSON.stringify(deletedIds));
+
     const localTemplates = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
     const idx = localTemplates.findIndex((t: any) => t.id === template.id);
     if (idx >= 0) localTemplates[idx] = template; else localTemplates.push(template);
@@ -433,6 +492,9 @@ class StorageService {
   }
 
   async deleteTemplate(templateId: string) {
+    const deletedIds = Array.from(new Set([...this.getDeletedTemplateIds(), templateId]));
+    localStorage.setItem('kinetix_deleted_templates', JSON.stringify(deletedIds));
+
     const localTemplates: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
     const filtered = localTemplates.filter(t => t.id !== templateId);
     localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(filtered));
@@ -688,8 +750,15 @@ class StorageService {
     ];
   }
 
+  getLocalTodayIso(date: Date = new Date()): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
   isSessionComplete(workoutId: string, athleteId?: string): boolean {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = this.getLocalTodayIso();
     if (athleteId) {
       const reopened = localStorage.getItem(`kinetix_reopened_${athleteId}`);
       if (reopened === todayStr) return false;
@@ -702,12 +771,12 @@ class StorageService {
   }
 
   isSessionReopenedByCoach(athleteId: string): boolean {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = this.getLocalTodayIso();
     return localStorage.getItem(`kinetix_reopened_${athleteId}`) === todayStr;
   }
 
   markSessionComplete(workoutId: string, athleteId?: string) {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = this.getLocalTodayIso();
     if (athleteId) {
       localStorage.removeItem(`kinetix_reopened_${athleteId}`);
       localStorage.setItem(`kinetix_locked_${athleteId}_${todayStr}`, workoutId);
@@ -721,7 +790,7 @@ class StorageService {
   }
 
   reopenSessionForAthlete(athleteId: string, workoutId?: string) {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = this.getLocalTodayIso();
     localStorage.setItem(`kinetix_reopened_${athleteId}`, todayStr);
     localStorage.removeItem(`kinetix_locked_${athleteId}_${todayStr}`);
     if (workoutId) {
@@ -842,11 +911,99 @@ class StorageService {
     this.saveExercises(list);
   }
   
-  getAthleteInsights(): AthleteInsight[] { 
-    return [
-      { athleteName: 'Carlos R.', message: 'RPE Crítico detectado en Sentadilla', status: 'critical', compliance: 95, lastRpe: 10, lastWorkoutDate: new Date().toISOString() },
-      { athleteName: 'Ana G.', message: '3 días sin actividad', status: 'warning', compliance: 40, lastWorkoutDate: new Date(Date.now() - 3 * 86400000).toISOString() }
-    ];
+  getAthleteInsights(): AthleteInsight[] {
+    const athletes = this.getAthletes().filter(a => a.role === 'client');
+    const logs = this.getAllLogs();
+    const todayIso = this.getLocalTodayIso();
+    const cutoff7d = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    return athletes.map((ath): AthleteInsight => {
+      const athLogs = logs
+        .filter(l => l.athleteId === ath.id)
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+      const uniqueRecentDays = new Set(
+        athLogs.filter(l => l.timestamp >= cutoff7d).map(l => l.timestamp.split('T')[0])
+      ).size;
+      const targetDays = Math.max(1, ath.daysPerWeek || 4);
+      const compliance = Math.min(100, Math.round((uniqueRecentDays / targetDays) * 100));
+
+      const latestLog = athLogs[0];
+      const latestRpe = athLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
+      const isDemo = ath.email?.toLowerCase().endsWith('@demo.com') || ath.name?.toLowerCase().includes('(demo)');
+      const isExpired = !ath.isUnlimited && !isDemo && !!ath.cycleEndDate && ath.cycleEndDate < todayIso;
+
+      if (ath.isActive === false) {
+        return {
+          athleteId: ath.id,
+          athleteName: ath.name,
+          message: 'Acceso pausado manualmente',
+          status: 'warning',
+          compliance,
+          lastRpe: latestRpe,
+          lastWorkoutDate: latestLog?.timestamp
+        };
+      }
+
+      if (isExpired) {
+        return {
+          athleteId: ath.id,
+          athleteName: ath.name,
+          message: `Membresía vencida (${ath.cycleEndDate}) · Requiere renovación o Sin Corte`,
+          status: 'critical',
+          compliance,
+          lastRpe: latestRpe,
+          lastWorkoutDate: latestLog?.timestamp
+        };
+      }
+
+      if (latestRpe && latestRpe >= 9) {
+        return {
+          athleteId: ath.id,
+          athleteName: ath.name,
+          message: `Esfuerzo elevado detectado (RPE @${latestRpe}) · Revisar recuperación`,
+          status: 'critical',
+          compliance,
+          lastRpe: latestRpe,
+          lastWorkoutDate: latestLog?.timestamp
+        };
+      }
+
+      if (latestLog) {
+        const diffDays = Math.floor((Date.now() - new Date(latestLog.timestamp).getTime()) / 86400000);
+        if (diffDays >= 4) {
+          return {
+            athleteId: ath.id,
+            athleteName: ath.name,
+            message: `${diffDays} días sin registro de sesión`,
+            status: 'warning',
+            compliance,
+            lastRpe: latestRpe,
+            lastWorkoutDate: latestLog.timestamp
+          };
+        }
+        return {
+          athleteId: ath.id,
+          athleteName: ath.name,
+          message: `Entrenamiento al día · ${ath.medicalConditions || 'Kinetix'}`,
+          status: 'normal',
+          compliance: Math.max(compliance, 75),
+          lastRpe: latestRpe,
+          lastWorkoutDate: latestLog.timestamp
+        };
+      }
+
+      return {
+        athleteId: ath.id,
+        athleteName: ath.name,
+        message: 'Sin sesiones registradas aún · Listo para iniciar',
+        status: 'normal',
+        compliance: 0
+      };
+    }).sort((a, b) => {
+      const rank = { critical: 0, warning: 1, normal: 2 };
+      return rank[a.status] - rank[b.status];
+    });
   }
 
   async saveUserSpecificWorkout(w: Workout) { await this.saveTemplate(w); }

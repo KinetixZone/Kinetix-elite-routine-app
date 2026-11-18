@@ -2,11 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key: string): string => {
   // @ts-ignore
-  const env = typeof process !== 'undefined' && process.env ? process.env : {};
-  // @ts-ignore
   const metaEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 
-  return env[key] || env[`VITE_${key}`] || metaEnv[key] || metaEnv[`VITE_${key}`] || '';
+  return metaEnv[key] || metaEnv[`VITE_${key}`] || '';
 };
 
 // Sanitiza URLs para prevenir que /rest/v1/ o barras finales rompan el endpoint de Supabase

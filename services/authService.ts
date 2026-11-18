@@ -15,7 +15,8 @@ class AuthService {
 
     // Validación de Master Key para acceso Admin / Coach
     private getMasterKey(): string {
-        return (typeof process !== 'undefined' && process.env?.ADMIN_MASTER_KEY) || 'kinetix.2302';
+        const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string> }).env) || {};
+        return metaEnv.VITE_ADMIN_MASTER_KEY || 'kinetix.2302';
     }
 
     private normalizeIdentifier(identifier: string): string {

@@ -81,9 +81,18 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
                         <p className="text-[10px] font-black uppercase text-white/10 tracking-widest">Esperando Transmisión de Datos...</p>
                     </div>
                 ) : insights.map((insight, idx) => (
-                    <div key={idx} onClick={() => onViewChange('crm')} className={`group relative bg-[#0F0F11] border rounded-[35px] p-8 transition-all hover:scale-[1.01] cursor-pointer ${insight.status === 'critical' ? 'border-red-600/40 shadow-[0_0_30px_rgba(220,38,38,0.1)]' : insight.status === 'warning' ? 'border-yellow-600/30' : 'border-white/5'}`}>
-                        <div className="flex justify-between items-start">
-                            <div className="flex gap-6 items-center">
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        if (insight.athleteId) {
+                          localStorage.setItem('kinetix_focus_athlete_id', insight.athleteId);
+                        }
+                        onViewChange('crm');
+                      }}
+                      className={`group relative bg-[#0F0F11] border rounded-[35px] p-6 md:p-8 transition-all hover:scale-[1.01] cursor-pointer ${insight.status === 'critical' ? 'border-red-600/40 shadow-[0_0_30px_rgba(220,38,38,0.1)]' : insight.status === 'warning' ? 'border-yellow-600/30' : 'border-white/5'}`}
+                    >
+                        <div className="flex justify-between items-start gap-3">
+                            <div className="flex gap-4 md:gap-6 items-center min-w-0">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${insight.status === 'critical' ? 'bg-red-600 text-white' : insight.status === 'warning' ? 'bg-yellow-500 text-black' : 'bg-white/5 text-white/40'}`}>
                                     {insight.athleteName.charAt(0)}
                                 </div>

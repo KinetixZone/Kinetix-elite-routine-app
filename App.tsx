@@ -150,7 +150,10 @@ const App: React.FC = () => {
     const scheduledWorkoutId = calendarService.getScheduledSession(today, user.id);
     
     if (scheduledWorkoutId) {
-      const scheduledWorkout = templates.find(t => t.id === scheduledWorkoutId) || storageService.getWorkoutById(scheduledWorkoutId);
+      const scheduledWorkout =
+        templates.find(t => t.id === scheduledWorkoutId) ||
+        storageService.getWorkoutById(scheduledWorkoutId) ||
+        (await storageService.getTemplateByIdCloud(scheduledWorkoutId));
       if (scheduledWorkout) {
         setCurrentWorkout(scheduledWorkout);
         return;

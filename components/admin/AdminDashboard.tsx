@@ -28,8 +28,16 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployLogs, setDeployLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
+  const [geminiOnline, setGeminiOnline] = useState(false);
+  const [adminNotice, setAdminNotice] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const notifyAdmin = (text: string, ok = true) => {
+      setAdminNotice({ ok, text });
+      setTimeout(() => setAdminNotice(null), 4000);
+  };
 
   useEffect(() => {
+      aiService.checkServerHealth().then(h => setGeminiOnline(h.geminiConfigured));
       const interval = setInterval(() => {
           setServerLoad(prev => Math.min(Math.max(prev + (Math.random() * 4 - 2), 10), 45));
       }, 3000);
@@ -37,18 +45,18 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
   }, []);
   
   const systemStatus = useMemo(() => {
-      const hasAiKey = aiService.isConfigured;
+      const hasAiKey = geminiOnline;
       const hasSupabase = isSupabaseConfigured;
       return {
         supabase: hasSupabase,
         gemini: hasAiKey,
         storage: storageService.getStorageUsage(),
-        aiDiag: !config.enableAI ? 'DESACTIVADO' : hasAiKey ? 'EN LINEA' : 'SIMULACIÓN',
+        aiDiag: !config.enableAI ? 'DESACTIVADO' : hasAiKey ? 'EN LINEA' : 'MODO 0-TOKENS',
         dbDiag: !config.enableCloud ? 'OFFLINE' : hasSupabase ? 'SYNC OK' : 'LOCAL',
         version: '7.0.0-Obsidian',
         owner: currentUser?.name || 'Leslie Barrera & Jorge González (Dueños)'
       };
-  }, [config, currentUser]);
+  }, [config, currentUser, geminiOnline]);
 
   const toggleFeature = (feature: keyof SystemConfig) => {
       const newConfig = { ...config, [feature]: !config[feature] };
@@ -58,8 +66,8 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
 
   const handleSaveBranding = () => {
     storageService.saveBranding(branding);
-    alert("✅ Branding actualizado.");
-    window.location.reload();
+    notifyAdmin("✅ Branding actualizado correctamente.", true);
+    setTimeout(() => window.location.reload(), 900);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,7 +81,8 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
 
   const runInvertedSync = async () => {
     if (!ghConfig.token || !ghConfig.repo || !ghConfig.owner) {
-        return alert("AUDITORÍA: Faltan credenciales críticas (Token, Usuario o Repo)");
+        notifyAdmin("⚠️ Faltan credenciales críticas (Token, Usuario o Repo)", false);
+        return;
     }
     
     setIsDeploying(true);
@@ -91,7 +100,7 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
             dependencies: {
                 "react": "19.0.0",
                 "react-dom": "19.0.0",
-                "@google/genai": "^1.39.0",
+                "@google/genai": "^3.6.0",
                 "@supabase/supabase-js": "^2.45.0"
             },
             scripts: { "dev": "vite", "build": "vite build", "preview": "vite preview" },
@@ -325,6 +334,12 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
         </div>
 
         <div className="animate-in slide-in-from-bottom-6 duration-500">
+            {adminNotice && (
+              <div className={`mb-6 p-4 rounded-2xl border text-xs font-black uppercase tracking-wider flex items-center justify-between ${adminNotice.ok ? 'bg-cyan-950/70 border-cyan-500/50 text-cyan-200' : 'bg-red-950/70 border-red-500/50 text-red-200'}`}>
+                <span>{adminNotice.text}</span>
+                <button type="button" onClick={() => setAdminNotice(null)} className="px-2 text-white/60 hover:text-white">✕</button>
+              </div>
+            )}
             
             {activeTab === 'system' && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
@@ -332,13 +347,13 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                         <div className="space-y-4 md:space-y-6">
                             <div className="flex justify-between items-start">
                                 <span className="text-4xl md:text-5xl">🧠</span>
-                                <span className={`text-[7px] md:text-[8px] font-black px-2 py-1 rounded border uppercase ${systemStatus.gemini ? 'border-red-500 text-red-500' : 'border-red-500 text-red-500'}`}>
+                                <span className={`text-[7px] md:text-[8px] font-black px-2 py-1 rounded border uppercase ${systemStatus.gemini ? 'border-cyan-400 text-cyan-400' : 'border-red-500 text-red-500'}`}>
                                     {systemStatus.aiDiag}
                                 </span>
                             </div>
                             <div>
-                                <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Motor IA</h3>
-                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Asistencia Técnica & Planificación Gemini Flash.</p>
+                                <h3 className="text-xl md:text-2xl font-black uppercase italic mb-1 md:mb-2 text-white">Directriz Gemini</h3>
+                                <p className="text-[8px] md:text-[10px] text-white/40 leading-relaxed uppercase font-bold tracking-widest">Motor Backend Gemini 4 (Auto-caché por historial).</p>
                             </div>
                         </div>
                         <button onClick={() => toggleFeature('enableAI')} className="w-full py-4 mt-8 md:mt-10 bg-white text-black rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all active:scale-95">
@@ -645,8 +660,12 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                             const reader = new FileReader();
                             reader.onload = (re) => {
                                 const success = storageService.restoreBackup(re.target?.result as string);
-                                if (success) { alert("RESTORE COMPLETO. El sistema se reiniciará."); window.location.reload(); }
-                                else alert("ERROR CRÍTICO: El archivo no tiene la firma de Kinetix.");
+                                if (success) {
+                                  notifyAdmin("✅ Restauración completa. Recargando...", true);
+                                  setTimeout(() => window.location.reload(), 900);
+                                } else {
+                                  notifyAdmin("❌ Error: El archivo no tiene una copia válida de Kinetix.", false);
+                                }
                             };
                             reader.readAsText(file);
                         }} />

@@ -265,6 +265,17 @@ export const WorkoutManager: React.FC = () => {
                   </button>
                 )}
                 <button
+                  onClick={async () => {
+                    await storageService.restorePresetTemplates();
+                    await refreshData();
+                    notify('✅ Rutinas base Kinetix restauradas en tu biblioteca.');
+                  }}
+                  className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/15 text-white/80 hover:text-white border border-white/15 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+                  title="Asegura tener visibles las 8 rutinas base Kinetix"
+                >
+                  🔄 Restaurar Base
+                </button>
+                <button
                   onClick={() => downloadWorkoutsTemplateCSV()}
                   className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/10 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
                 >

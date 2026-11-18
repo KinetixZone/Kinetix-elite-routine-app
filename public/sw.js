@@ -18,8 +18,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
-  // Nunca cachear llamadas externas (Supabase, YouTube, etc.)
-  if (!url.startsWith(self.location.origin) || event.request.method !== 'GET') {
+  const parsedUrl = new URL(url);
+  // Nunca cachear llamadas externas ni rutas API de servidor (/api/*)
+  if (!url.startsWith(self.location.origin) || parsedUrl.pathname.startsWith('/api/') || event.request.method !== 'GET') {
     return;
   }
 
