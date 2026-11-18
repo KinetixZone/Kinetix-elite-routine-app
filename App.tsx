@@ -104,16 +104,14 @@ const App: React.FC = () => {
   useEffect(() => {
     const initApp = async () => {
         storageService.init(DEFAULT_WORKOUT);
+        const serverTodayIso = await storageService.fetchServerTodayIso();
         const localUser = storageService.getUser();
         if (localUser) {
             if (localUser.role !== 'owner') {
                 const syncedList = await storageService.syncAthletesFromCloud();
                 const fresh = syncedList.find(u => u.id === localUser.id);
                 if (fresh) {
-                    const now = new Date();
-                    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                    const isDemoAccount = fresh.email?.toLowerCase().endsWith('@demo.com') || fresh.name?.toLowerCase().includes('(demo)');
-                    const expired = !fresh.isUnlimited && !isDemoAccount && fresh.role === 'client' && fresh.cycleEndDate && fresh.cycleEndDate < todayIso;
+                    const expired = storageService.isMembershipExpired(fresh, serverTodayIso);
                     if (fresh.isActive === false || expired) {
                         storageService.logout();
                         setIsLoading(false);
@@ -122,6 +120,11 @@ const App: React.FC = () => {
                     storageService.saveUser(fresh);
                     setUser(fresh);
                     setView(fresh.role === 'client' ? 'athlete_home' : 'home');
+                    setIsLoading(false);
+                    return;
+                }
+                if (localUser.isActive === false || storageService.isMembershipExpired(localUser, serverTodayIso)) {
+                    storageService.logout();
                     setIsLoading(false);
                     return;
                 }
@@ -137,30 +140,37 @@ const App: React.FC = () => {
 
   const refreshWorkoutContext = useCallback(async () => {
     if (!user) return;
-    
+    const athleteScope = user.role === 'client' ? user.id : undefined;
+
+    const applyScheduledWorkout = async (sourceTemplates: Workout[]) => {
+      const today = new Date();
+      const scheduledWorkoutId = calendarService.getScheduledSession(today, user.id);
+      if (scheduledWorkoutId) {
+        const scheduledWorkout =
+          sourceTemplates.find(t => t.id === scheduledWorkoutId) ||
+          storageService.getWorkoutById(scheduledWorkoutId) ||
+          (await storageService.getTemplateByIdCloud(scheduledWorkoutId));
+        if (scheduledWorkout) {
+          setCurrentWorkout(scheduledWorkout);
+          return;
+        }
+      }
+      setCurrentWorkout(EMPTY_WORKOUT);
+    };
+
     const [templates] = await Promise.all([
-      storageService.getTemplates(user.role === 'client' ? user.id : undefined),
-      calendarService.syncCalendarFromCloud(user.role === 'client' ? user.id : undefined),
-      storageService.syncLogsFromCloud(user.role === 'client' ? user.id : undefined),
+      storageService.getTemplates(athleteScope, {
+        onRevalidate: (fresh) => {
+          setAvailableTemplates(fresh);
+          void applyScheduledWorkout(fresh);
+        }
+      }),
+      calendarService.syncCalendarFromCloud(athleteScope),
+      storageService.syncLogsFromCloud(athleteScope),
       storageService.syncAthletesFromCloud()
     ]);
     setAvailableTemplates(templates);
-    
-    const today = new Date();
-    const scheduledWorkoutId = calendarService.getScheduledSession(today, user.id);
-    
-    if (scheduledWorkoutId) {
-      const scheduledWorkout =
-        templates.find(t => t.id === scheduledWorkoutId) ||
-        storageService.getWorkoutById(scheduledWorkoutId) ||
-        (await storageService.getTemplateByIdCloud(scheduledWorkoutId));
-      if (scheduledWorkout) {
-        setCurrentWorkout(scheduledWorkout);
-        return;
-      }
-    }
-    
-    setCurrentWorkout(EMPTY_WORKOUT);
+    await applyScheduledWorkout(templates);
   }, [user]);
 
   useEffect(() => {

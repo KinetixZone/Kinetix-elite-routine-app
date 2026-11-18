@@ -43,8 +43,11 @@ class AuthService {
 
         const isOwner = this.isAdminEmail(idLower);
 
-        // Sincronizar catálogo real de usuarios desde Supabase antes de validar (Multi-dispositivo)
-        const athletes = await storageService.syncAthletesFromCloud();
+        // Sincronizar catálogo real de usuarios y fecha autoritativa del servidor (zona horaria correcta)
+        const [athletes, serverTodayIso] = await Promise.all([
+            storageService.syncAthletesFromCloud(),
+            storageService.fetchServerTodayIso()
+        ]);
         const account = this.findUserByIdentifier(athletes, idLower);
 
         if (!isOwner && !account) {
@@ -71,23 +74,17 @@ class AuthService {
             return { success: true, error: null };
         }
 
-        // Validación de Coach o Atleta (con control de pausa y corte)
+        // Validación de Coach o Atleta (con control de pausa y corte en zona horaria del servidor)
         if (account) {
             if (account.isActive === false) {
                 return { success: false, error: "ACCESO PAUSADO POR ADMINISTRACIÓN. CONTACTA A TU COACH." };
             }
 
-            // Verificar fecha de corte en zona horaria local solo para clientes reales con vencimiento
-            const isDemoAccount = account.email?.toLowerCase().endsWith('@demo.com') || account.name?.toLowerCase().includes('(demo)');
-            if (!account.isUnlimited && !isDemoAccount && account.role === 'client' && account.cycleEndDate) {
-                const now = new Date();
-                const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                if (account.cycleEndDate < todayIso) {
-                    return {
-                        success: false,
-                        error: `MEMBRESÍA VENCIDA (${account.cycleEndDate}). RENUEVA TU ACCESO CON TU COACH.`
-                    };
-                }
+            if (storageService.isMembershipExpired(account, serverTodayIso)) {
+                return {
+                    success: false,
+                    error: `MEMBRESÍA VENCIDA (${account.cycleEndDate}). RENUEVA TU ACCESO CON TU COACH.`
+                };
             }
 
             const expectedPwd = account.password || (account.role === 'coach' ? 'kinetix.coach' : 'kinetix.atleta');

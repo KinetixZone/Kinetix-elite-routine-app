@@ -502,7 +502,9 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   }, [selectedAthlete?.id, selectedAthlete?.coachNote]);
 
   const loadTemplates = async () => {
-    const all = await storageService.getTemplates();
+    const all = await storageService.getTemplates(undefined, {
+      onRevalidate: (fresh) => setTemplates(fresh.filter(t => t.isTemplate !== false))
+    });
     setTemplates(all.filter(t => t.isTemplate !== false));
   };
 
@@ -714,12 +716,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
 
   const allExercises = useMemo(() => storageService.getExercises(), []);
 
-  const nowLocal = new Date();
-  const todayLocalIso = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
-  const isAthleteExpired = (a: User) => {
-    const isDemo = a.email?.toLowerCase().endsWith('@demo.com') || a.name?.toLowerCase().includes('(demo)');
-    return !a.isUnlimited && !isDemo && a.role === 'client' && !!a.cycleEndDate && a.cycleEndDate < todayLocalIso;
-  };
+  const isAthleteExpired = (a: User) => storageService.isMembershipExpired(a);
 
   return (
     <div className="pt-4 md:pt-8 pb-28 px-3 md:px-6 max-w-7xl mx-auto flex flex-col lg:flex-row items-start gap-6">
@@ -1347,16 +1344,25 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                             {Array.from(new Set(session.logs.map(l => l.exerciseId))).map(exId => {
                                                 const exName = storageService.getExercises().find(ex => ex.id === exId)?.name || exId;
                                                 const exerciseLogs = session.logs.filter(l => l.exerciseId === exId).sort((a, b) => a.setIndex - b.setIndex);
+                                                const realSets = exerciseLogs.filter(l => Number(l.weight) > 0 || Number(l.reps) > 0);
+                                                const exQuickNote = exerciseLogs.find(l => l.notes && l.notes.trim())?.notes;
                                                 return (
-                                                    <div key={exId} className="text-xs">
-                                                        <span className="font-black text-white/80 uppercase italic text-[10px] block mb-1">↳ {exName}</span>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {exerciseLogs.map((l, sIdx) => (
-                                                                <div key={sIdx} className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/5 text-[9px] font-mono text-white/50">
-                                                                    S{sIdx+1}: <span className="font-bold text-white">{l.weight}kg</span> × <span className="font-bold text-white">{l.reps}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                    <div key={exId} className="text-xs space-y-1">
+                                                        <span className="font-black text-white/80 uppercase italic text-[10px] block">↳ {exName}</span>
+                                                        {realSets.length > 0 && (
+                                                          <div className="flex flex-wrap gap-2">
+                                                              {realSets.map((l, sIdx) => (
+                                                                  <div key={sIdx} className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/5 text-[9px] font-mono text-white/50">
+                                                                      S{sIdx+1}: <span className="font-bold text-white">{l.weight}kg</span> × <span className="font-bold text-white">{l.reps}</span>
+                                                                  </div>
+                                                              ))}
+                                                          </div>
+                                                        )}
+                                                        {exQuickNote && (
+                                                          <p className="text-[10px] text-cyan-300/90 italic font-medium pl-1">
+                                                            📝 Nota atleta: "{exQuickNote}"
+                                                          </p>
+                                                        )}
                                                     </div>
                                                 );
                                             })}

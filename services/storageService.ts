@@ -162,19 +162,35 @@ class StorageService {
       localStorage.setItem(KEYS.BRANDING, JSON.stringify(config));
   }
 
+  private cachedServerDate: { date: string; fetchedAt: number } | null = null;
+  private readonly TEMPLATES_META_KEY = 'kinetix_templates_meta_v1';
+  private readonly TEMPLATES_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+  private readonly BACKGROUND_REVALIDATE_COOLDOWN_MS = 20_000;
+  private templatesInflight = new Map<string, Promise<Workout[]>>();
+  private lastBgRevalidateAt = new Map<string, number>();
+
   getSystemConfig() {
-      const data = localStorage.getItem(KEYS.SYSTEM_CONFIG);
-      return data ? JSON.parse(data) : { enableAI: false, enableCloud: true };
+      try {
+          const data = localStorage.getItem(KEYS.SYSTEM_CONFIG);
+          return data ? JSON.parse(data) : { enableAI: false, enableCloud: true };
+      } catch {
+          return { enableAI: false, enableCloud: true };
+      }
   }
 
   saveUser(user: User) { localStorage.setItem(KEYS.USER, JSON.stringify(user)); }
   getUser(): User | null {
-    const data = localStorage.getItem(KEYS.USER);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = localStorage.getItem(KEYS.USER);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
   }
   logout() {
     localStorage.removeItem(KEYS.USER);
     localStorage.removeItem(KEYS.WORKOUT_TEMPLATES);
+    localStorage.removeItem(this.TEMPLATES_META_KEY);
     localStorage.removeItem(KEYS.CALENDAR);
   }
 
@@ -446,58 +462,217 @@ class StorageService {
     return undefined;
   }
 
-  // getTemplates ahora combina rutinas base por default + cache local + Supabase sin borrar las preguardadas
-  async getTemplates(athleteId?: string): Promise<Workout[]> {
-    let cloudTemplates: Workout[] = [];
-
-    // 1. Intentar cargar desde Supabase si está configurado
-    if (isSupabaseConfigured) {
-        try {
-            const query = supabase.from('kinetix_templates').select('*');
-            if (athleteId) {
-                // PRIVACIDAD: El atleta solo descarga lo asignado a él
-                query.eq('assignedTo', athleteId);
-            }
-            const { data, error } = await query;
-            if (!error && data) {
-                cloudTemplates = data as Workout[];
-            }
-        } catch (e) { console.warn("Supabase Fetch Error, usando LocalStorage", e); }
+  private readTemplatesCacheMeta(): { scope: string; syncedAt: number } | null {
+    try {
+      const raw = localStorage.getItem(this.TEMPLATES_META_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
     }
+  }
 
-    // 2. Cache local
+  private writeTemplatesCacheMeta(scope: string) {
+    try {
+      localStorage.setItem(this.TEMPLATES_META_KEY, JSON.stringify({ scope, syncedAt: Date.now() }));
+    } catch {}
+  }
+
+  private getLocalTemplatesScoped(athleteId?: string): Workout[] {
     let localTemplates: Workout[] = [];
     try {
       const localData = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
       if (localData) localTemplates = JSON.parse(localData);
-    } catch { localTemplates = []; }
-
-    if (athleteId) {
-      // Privacidad estricta: el atleta nunca recibe plantillas maestras de otros ni del coach
-      const map = new Map<string, Workout>();
-      localTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
-      cloudTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
-      const athleteOnly = Array.from(map.values());
-      localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(athleteOnly));
-      return athleteOnly;
+    } catch {
+      localTemplates = [];
     }
 
-    // Para Coach / Dueño: mantener SIEMPRE las rutinas base por default + rutinas propias locales/nube (salvo las borradas intencionalmente)
+    if (athleteId) {
+      return localTemplates.filter(t => t.assignedTo === athleteId);
+    }
+
     const deletedIds = new Set(this.getDeletedTemplateIds());
-    const mergedMap = new Map<string, Workout>();
+    const cutoff30d = this.getLocalTodayIso(new Date(Date.now() - 30 * 86400000));
+    const map = new Map<string, Workout>();
     PRESET_WORKOUT_TEMPLATES.forEach(p => {
-      if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
+      if (!deletedIds.has(p.id)) map.set(p.id, p);
     });
     localTemplates.forEach(t => {
-      if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+      if (deletedIds.has(t.id)) return;
+      const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
+      if (keepInstance) map.set(t.id, t);
     });
-    cloudTemplates.forEach(t => {
-      if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+    return Array.from(map.values());
+  }
+
+  private async syncTemplatesFromCloud(athleteId?: string): Promise<Workout[]> {
+    const scopeKey = athleteId || 'staff';
+    const existing = this.templatesInflight.get(scopeKey);
+    if (existing) return existing;
+
+    const promise = (async (): Promise<Workout[]> => {
+      let cloudTemplates: Workout[] = [];
+      const cutoff30d = this.getLocalTodayIso(new Date(Date.now() - 30 * 86400000));
+
+      if (isSupabaseConfigured) {
+        try {
+          let query = supabase.from('kinetix_templates').select('*');
+          if (athleteId) {
+            query = query.eq('assignedTo', athleteId);
+          } else {
+            // Ventana ligera para Coach/Dueños: Plantillas maestras + personalizadas recientes (>= 30 días)
+            query = query.or(`isTemplate.eq.true,scheduledDate.gte.${cutoff30d},scheduledDate.is.null`);
+          }
+          const { data, error } = await query;
+          if (!error && data) {
+            cloudTemplates = data as Workout[];
+          }
+        } catch (e) {
+          console.warn('Supabase Fetch Error, usando caché local', e);
+        }
+      }
+
+      const localScoped = this.getLocalTemplatesScoped(athleteId);
+
+      if (athleteId) {
+        const map = new Map<string, Workout>();
+        localScoped.forEach(t => map.set(t.id, t));
+        cloudTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
+        const athleteOnly = Array.from(map.values());
+        localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(athleteOnly));
+        this.writeTemplatesCacheMeta(scopeKey);
+        return athleteOnly;
+      }
+
+      const deletedIds = new Set(this.getDeletedTemplateIds());
+      const mergedMap = new Map<string, Workout>();
+      PRESET_WORKOUT_TEMPLATES.forEach(p => {
+        if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
+      });
+      localScoped.forEach(t => {
+        if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+      });
+      cloudTemplates.forEach(t => {
+        if (deletedIds.has(t.id)) return;
+        const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
+        if (keepInstance) mergedMap.set(t.id, t);
+      });
+
+      const merged = Array.from(mergedMap.values());
+      localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(merged));
+      this.writeTemplatesCacheMeta(scopeKey);
+      return merged;
+    })().finally(() => {
+      this.templatesInflight.delete(scopeKey);
     });
 
-    const merged = Array.from(mergedMap.values());
-    localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(merged));
-    return merged;
+    this.templatesInflight.set(scopeKey, promise);
+    return promise;
+  }
+
+  // Estrategia Stale-While-Revalidate (expiración 24h):
+  // 1) Si hay caché vigente (<24h), responde al instante desde localStorage y revalida Supabase en segundo plano.
+  // 2) Si expiró (>24h) o no existe caché para ese usuario, sincroniza directo desde Supabase.
+  async getTemplates(
+    athleteId?: string,
+    options?: { forceCloud?: boolean; onRevalidate?: (fresh: Workout[]) => void }
+  ): Promise<Workout[]> {
+    const scopeKey = athleteId || 'staff';
+    const meta = this.readTemplatesCacheMeta();
+    const hasRawCache = !!localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
+    const isCacheFresh =
+      !options?.forceCloud &&
+      hasRawCache &&
+      !!meta &&
+      meta.scope === scopeKey &&
+      Date.now() - meta.syncedAt < this.TEMPLATES_TTL_MS;
+
+    if (isCacheFresh) {
+      const cachedList = this.getLocalTemplatesScoped(athleteId);
+      const lastBg = this.lastBgRevalidateAt.get(scopeKey) || 0;
+      if (isSupabaseConfigured && Date.now() - lastBg > this.BACKGROUND_REVALIDATE_COOLDOWN_MS) {
+        this.lastBgRevalidateAt.set(scopeKey, Date.now());
+        void this.syncTemplatesFromCloud(athleteId).then(fresh => {
+          if (options?.onRevalidate) options.onRevalidate(fresh);
+        });
+      }
+      return cachedList;
+    }
+
+    return this.syncTemplatesFromCloud(athleteId);
+  }
+
+  async fetchArchivableRoutines(daysOlderThan = 60): Promise<{
+    workouts: Workout[];
+    oldEventsCount: number;
+    cutoffIso: string;
+  }> {
+    const cutoffIso = this.getLocalTodayIso(new Date(Date.now() - daysOlderThan * 86400000));
+    let oldWorkouts: Workout[] = [];
+    let oldEventsCount = 0;
+
+    if (isSupabaseConfigured) {
+      try {
+        const [{ data: tplData }, { data: calData }] = await Promise.all([
+          supabase
+            .from('kinetix_templates')
+            .select('*')
+            .eq('isTemplate', false)
+            .lt('scheduledDate', cutoffIso),
+          supabase
+            .from('kinetix_calendar')
+            .select('id')
+            .lt('start_at', cutoffIso)
+        ]);
+        if (Array.isArray(tplData)) oldWorkouts = tplData as Workout[];
+        if (Array.isArray(calData)) oldEventsCount = calData.length;
+      } catch (e) {
+        console.warn('Error consultando archivo en nube:', e);
+      }
+    } else {
+      try {
+        const rawTpls: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+        oldWorkouts = rawTpls.filter(t => t.isTemplate === false && !!t.scheduledDate && t.scheduledDate < cutoffIso);
+        const rawCal = JSON.parse(localStorage.getItem(KEYS.CALENDAR) || '[]');
+        oldEventsCount = Array.isArray(rawCal)
+          ? rawCal.filter((e: any) => String(e?.start || '').slice(0, 10) < cutoffIso).length
+          : 0;
+      } catch {}
+    }
+
+    return { workouts: oldWorkouts, oldEventsCount, cutoffIso };
+  }
+
+  async purgeArchivedRoutines(workoutIds: string[], cutoffIso: string): Promise<{ deletedWorkouts: number }> {
+    let deletedWorkouts = 0;
+
+    if (isSupabaseConfigured) {
+      if (workoutIds.length > 0) {
+        const { error } = await supabase.from('kinetix_templates').delete().in('id', workoutIds);
+        if (!error) deletedWorkouts = workoutIds.length;
+      }
+      await supabase.from('kinetix_calendar').delete().lt('start_at', cutoffIso);
+    } else {
+      deletedWorkouts = workoutIds.length;
+    }
+
+    try {
+      const idSet = new Set(workoutIds);
+      const localTpls: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+      localStorage.setItem(
+        KEYS.WORKOUT_TEMPLATES,
+        JSON.stringify(localTpls.filter(t => !idSet.has(t.id)))
+      );
+      const localCal = JSON.parse(localStorage.getItem(KEYS.CALENDAR) || '[]');
+      if (Array.isArray(localCal)) {
+        localStorage.setItem(
+          KEYS.CALENDAR,
+          JSON.stringify(localCal.filter((e: any) => String(e?.start || '').slice(0, 10) >= cutoffIso))
+        );
+      }
+      this.writeTemplatesCacheMeta('staff');
+    } catch {}
+
+    return { deletedWorkouts };
   }
 
   private toCloudTemplatePayload(tpl: Workout) {
@@ -525,6 +700,7 @@ class StorageService {
     const idx = localTemplates.findIndex((t: any) => t.id === template.id);
     if (idx >= 0) localTemplates[idx] = template; else localTemplates.push(template);
     localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(localTemplates));
+    this.writeTemplatesCacheMeta(template.assignedTo || 'staff');
 
     if (isSupabaseConfigured) {
         try {
@@ -540,6 +716,7 @@ class StorageService {
     const localTemplates: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
     const filtered = localTemplates.filter(t => t.id !== templateId);
     localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(filtered));
+    this.writeTemplatesCacheMeta('staff');
 
     if (isSupabaseConfigured) {
       try {
@@ -550,6 +727,7 @@ class StorageService {
 
   async replaceAllTemplates(templates: Workout[]) {
     localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(templates));
+    this.writeTemplatesCacheMeta('staff');
     if (isSupabaseConfigured) {
       try {
         for (const tpl of templates) {
@@ -560,9 +738,13 @@ class StorageService {
   }
 
   getWorkoutById(id: string): Workout | undefined {
-    const data = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
-    const all: Workout[] = data ? JSON.parse(data) : [];
-    return all.find(w => w.id === id);
+    try {
+      const data = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
+      const all: Workout[] = data ? JSON.parse(data) : [];
+      return all.find(w => w.id === id);
+    } catch {
+      return undefined;
+    }
   }
 
   async seedSupabaseDatabase(): Promise<{ success: boolean; message: string; templatesCount: number; athletesCount: number }> {
@@ -662,12 +844,122 @@ class StorageService {
     localStorage.setItem(KEYS.PRS, JSON.stringify(prs));
   }
 
+  getLastExerciseNote(exerciseId: string, athleteId?: string): string {
+    try {
+      const cacheKey = `kinetix_ex_notes_${athleteId || 'default'}`;
+      const rawMap = localStorage.getItem(cacheKey);
+      if (rawMap) {
+        const parsed = JSON.parse(rawMap) as Record<string, string>;
+        if (parsed[exerciseId]) return parsed[exerciseId];
+      }
+    } catch {}
+    const logs = this.getAllLogs()
+      .filter(l => l.exerciseId === exerciseId && (!athleteId || !l.athleteId || l.athleteId === athleteId) && l.notes && l.notes.trim())
+      .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+    return logs[0]?.notes?.trim() || '';
+  }
+
+  private cacheExerciseNoteLocal(exerciseId: string, note: string, athleteId?: string) {
+    try {
+      const cacheKey = `kinetix_ex_notes_${athleteId || 'default'}`;
+      const current = JSON.parse(localStorage.getItem(cacheKey) || '{}') as Record<string, string>;
+      if (note.trim()) {
+        current[exerciseId] = note.trim();
+      } else {
+        delete current[exerciseId];
+      }
+      const entries = Object.entries(current).slice(-100);
+      localStorage.setItem(cacheKey, JSON.stringify(Object.fromEntries(entries)));
+    } catch {}
+  }
+
+  async saveExerciseQuickNote(
+    exerciseId: string,
+    note: string,
+    athleteId?: string,
+    workoutId?: string,
+    workoutName?: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    const cleanNote = note.trim().slice(0, 160);
+    if (!cleanNote) return { ok: false, error: 'Nota vacía' };
+
+    this.cacheExerciseNoteLocal(exerciseId, cleanNote, athleteId);
+
+    const todayIso = this.getLocalTodayIso();
+    const currentLogs = this.getAllLogs();
+    const existingIdx = currentLogs.findIndex(
+      l =>
+        l.exerciseId === exerciseId &&
+        (!athleteId || !l.athleteId || l.athleteId === athleteId) &&
+        (l.timestamp || '').startsWith(todayIso)
+    );
+
+    if (existingIdx >= 0) {
+      currentLogs[existingIdx] = { ...currentLogs[existingIdx], notes: cleanNote };
+    } else {
+      currentLogs.unshift({
+        exerciseId,
+        setIndex: 0,
+        weight: 0,
+        reps: 0,
+        timestamp: new Date().toISOString(),
+        isPR: false,
+        athleteId,
+        workoutId,
+        workoutName,
+        notes: cleanNote
+      });
+    }
+    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(currentLogs.slice(0, 250)));
+
+    if (!isSupabaseConfigured) return { ok: true };
+
+    try {
+      const dayStart = `${todayIso}T00:00:00.000Z`;
+      let findQuery = supabase
+        .from('workout_logs')
+        .select('id')
+        .eq('exercise_id', exerciseId)
+        .gte('timestamp', dayStart)
+        .order('timestamp', { ascending: false })
+        .limit(1);
+      if (athleteId) findQuery = findQuery.eq('athlete_id', athleteId);
+
+      const { data: existingRows } = await findQuery;
+      if (existingRows && existingRows.length > 0 && existingRows[0]?.id) {
+        const { error: updErr } = await supabase
+          .from('workout_logs')
+          .update({ notes: cleanNote })
+          .eq('id', existingRows[0].id);
+        if (!updErr) return { ok: true };
+        return { ok: false, error: 'Ejecuta el SQL actualizado para guardar notas en workout_logs.' };
+      }
+
+      const { error: insErr } = await supabase.from('workout_logs').insert({
+        athlete_id: athleteId || null,
+        exercise_id: exerciseId,
+        weight: 0,
+        reps: 0,
+        is_pr: false,
+        notes: cleanNote,
+        timestamp: new Date().toISOString()
+      });
+      if (!insErr) return { ok: true };
+      return { ok: false, error: 'Ejecuta el SQL actualizado en Sistema para sincronizar notas en nube.' };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Error al guardar nota en nube' };
+    }
+  }
+
   saveSessionLogs(logs: WorkoutLog[]) {
     const currentLogs = this.getAllLogs();
     const currentPRs = this.getPRs();
     const exercises = this.getExercises();
 
     const processedLogs = logs.map(log => {
+      if (log.notes && log.notes.trim()) {
+        this.cacheExerciseNoteLocal(log.exerciseId, log.notes.trim(), log.athleteId);
+      }
       const w = Number(log.weight) || 0;
       const r = Number(log.reps) || 0;
       if (w > 0 && r > 0 && log.exerciseId !== 'kinetix-class-log') {
@@ -692,23 +984,43 @@ class StorageService {
       return log;
     });
 
+    // Si hay series reales para un ejercicio hoy, elimina el marcador 0x0 previo para no acumular basura
+    const realExerciseKeysToday = new Set(
+      processedLogs
+        .filter(l => (Number(l.weight) > 0 || Number(l.reps) > 0))
+        .map(l => `${l.athleteId || ''}|${l.exerciseId}|${(l.timestamp || '').slice(0, 10)}`)
+    );
+    const cleanedPrevLogs = currentLogs.filter(l => {
+      const isPlaceholder = Number(l.weight) === 0 && Number(l.reps) === 0;
+      if (!isPlaceholder) return true;
+      const key = `${l.athleteId || ''}|${l.exerciseId}|${(l.timestamp || '').slice(0, 10)}`;
+      return !realExerciseKeysToday.has(key);
+    });
+
     // Evita acumulación de basura en localStorage manteniendo máximo 250 logs recientes
-    const trimmedLogs = [...currentLogs, ...processedLogs]
+    const trimmedLogs = [...cleanedPrevLogs, ...processedLogs]
       .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
       .slice(0, 250);
     localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(trimmedLogs));
 
     if (isSupabaseConfigured && processedLogs.length > 0) {
-      const cloudRows = processedLogs.map(l => ({
+      const fullRows = processedLogs.map(l => ({
         athlete_id: l.athleteId || null,
         exercise_id: l.exerciseId,
         weight: Number(l.weight) || 0,
         reps: Number(l.reps) || 0,
         is_pr: !!l.isPR,
+        notes: l.notes?.trim() || null,
         timestamp: l.timestamp || new Date().toISOString()
       }));
-      supabase.from('workout_logs').insert(cloudRows).then(({ error }) => {
-        if (error) console.warn('Cloud log insert skipped:', error.message);
+      supabase.from('workout_logs').insert(fullRows).then(({ error }) => {
+        if (error) {
+          // Fallback seguro si la columna notes aún no existe en Supabase
+          const basicRows = fullRows.map(({ notes: _n, ...rest }) => rest);
+          supabase.from('workout_logs').insert(basicRows).then(({ error: err2 }) => {
+            if (err2) console.warn('Cloud log insert skipped:', err2.message);
+          });
+        }
       });
     }
   }
@@ -729,6 +1041,7 @@ class StorageService {
         weight: Number(row.weight) || 0,
         reps: Number(row.reps) || 0,
         isPR: !!row.is_pr,
+        notes: row.notes || undefined,
         timestamp: row.timestamp
       }));
 
@@ -741,16 +1054,23 @@ class StorageService {
           merged.push(cl);
         }
       });
-      localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(merged));
-      return merged;
+      const capped = merged
+        .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+        .slice(0, 250);
+      localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(capped));
+      return capped;
     } catch (e) {
       return local;
     }
   }
 
   getAllLogs(): WorkoutLog[] {
-    const data = localStorage.getItem(KEYS.LOG_HISTORY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(KEYS.LOG_HISTORY);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
   }
 
   getMuscleStatus(): MuscleStatus[] { 
@@ -803,6 +1123,76 @@ class StorageService {
     return `${y}-${m}-${d}`;
   }
 
+  formatDateInServerTz(date: Date = new Date(), timeZone = 'America/Mexico_City'): string {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(date);
+    } catch {
+      return this.getLocalTodayIso(date);
+    }
+  }
+
+  getServerTodayIsoSync(): string {
+    return this.cachedServerDate?.date || this.formatDateInServerTz(new Date());
+  }
+
+  async fetchServerTodayIso(force = false): Promise<string> {
+    if (!force && this.cachedServerDate && Date.now() - this.cachedServerDate.fetchedAt < 60_000) {
+      return this.cachedServerDate.date;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    try {
+      const res = await fetch('/api/health', { signal: controller.signal, cache: 'no-store' });
+      const headerDate = res.headers.get('date');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (typeof data?.serverDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.serverDate)) {
+          this.cachedServerDate = { date: data.serverDate, fetchedAt: Date.now() };
+          return data.serverDate;
+        }
+        if (typeof data?.serverIso === 'string') {
+          const parsed = new Date(data.serverIso);
+          if (!isNaN(parsed.getTime())) {
+            const tzDate = this.formatDateInServerTz(parsed, data.timeZone || 'America/Mexico_City');
+            this.cachedServerDate = { date: tzDate, fetchedAt: Date.now() };
+            return tzDate;
+          }
+        }
+      }
+      if (headerDate) {
+        const parsedHeader = new Date(headerDate);
+        if (!isNaN(parsedHeader.getTime())) {
+          const tzDate = this.formatDateInServerTz(parsedHeader);
+          this.cachedServerDate = { date: tzDate, fetchedAt: Date.now() };
+          return tzDate;
+        }
+      }
+    } catch {
+      // Fallback silencioso a conversión segura en TZ del servidor
+    } finally {
+      clearTimeout(timer);
+    }
+    const fallback = this.formatDateInServerTz(new Date());
+    this.cachedServerDate = { date: fallback, fetchedAt: Date.now() };
+    return fallback;
+  }
+
+  isMembershipExpired(user: User, referenceDateIso?: string): boolean {
+    if (!user || user.role !== 'client' || user.isUnlimited) return false;
+    const isDemo = user.email?.toLowerCase().endsWith('@demo.com') || user.name?.toLowerCase().includes('(demo)');
+    if (isDemo || !user.cycleEndDate) return false;
+    const normalizedEnd = String(user.cycleEndDate).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedEnd)) return false;
+    const todayIso = referenceDateIso || this.getServerTodayIsoSync();
+    return normalizedEnd < todayIso;
+  }
+
   isSessionComplete(workoutId: string, athleteId?: string): boolean {
     const todayStr = this.getLocalTodayIso();
     if (athleteId) {
@@ -811,9 +1201,13 @@ class StorageService {
       const locked = localStorage.getItem(`kinetix_locked_${athleteId}_${todayStr}`);
       if (locked === workoutId) return true;
     }
-    const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
-    const list = data ? JSON.parse(data) : [];
-    return list.includes(workoutId);
+    try {
+      const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
+      const list = data ? JSON.parse(data) : [];
+      return Array.isArray(list) && list.includes(workoutId);
+    } catch {
+      return false;
+    }
   }
 
   isSessionReopenedByCoach(athleteId: string): boolean {
@@ -944,6 +1338,31 @@ class StorageService {
           localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(cleaned));
         }
       }
+
+      // Limpiar eventos de calendario de hace más de 60 días para no saturar navegador
+      const calCutoff = this.getLocalTodayIso(new Date(Date.now() - 60 * 86400000));
+      const rawCal = localStorage.getItem(KEYS.CALENDAR);
+      if (rawCal) {
+        const calEvents = JSON.parse(rawCal);
+        if (Array.isArray(calEvents)) {
+          const recentCal = calEvents.filter((e: any) => {
+            const d = String(e?.start || '').slice(0, 10);
+            return !d || d >= calCutoff;
+          });
+          if (recentCal.length < calEvents.length) {
+            localStorage.setItem(KEYS.CALENDAR, JSON.stringify(recentCal));
+          }
+        }
+      }
+
+      // Mantener tope de 250 logs locales
+      const rawLogs = localStorage.getItem(KEYS.LOG_HISTORY);
+      if (rawLogs) {
+        const parsedLogs = JSON.parse(rawLogs);
+        if (Array.isArray(parsedLogs) && parsedLogs.length > 250) {
+          localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(parsedLogs.slice(0, 250)));
+        }
+      }
     } catch {
       // Ignore cleanup errors
     }
@@ -993,7 +1412,7 @@ class StorageService {
   getAthleteInsights(): AthleteInsight[] {
     const athletes = this.getAthletes().filter(a => a.role === 'client');
     const logs = this.getAllLogs();
-    const todayIso = this.getLocalTodayIso();
+    const todayIso = this.getServerTodayIsoSync();
     const cutoff7d = new Date(Date.now() - 7 * 86400000).toISOString();
 
     return athletes.map((ath): AthleteInsight => {
@@ -1009,8 +1428,7 @@ class StorageService {
 
       const latestLog = athLogs[0];
       const latestRpe = athLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
-      const isDemo = ath.email?.toLowerCase().endsWith('@demo.com') || ath.name?.toLowerCase().includes('(demo)');
-      const isExpired = !ath.isUnlimited && !isDemo && !!ath.cycleEndDate && ath.cycleEndDate < todayIso;
+      const isExpired = this.isMembershipExpired(ath, todayIso);
 
       if (ath.isActive === false) {
         return {

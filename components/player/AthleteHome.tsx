@@ -150,7 +150,12 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
       const todayStr = storageService.getLocalTodayIso();
       const todayLogs = storageService
         .getAllLogs()
-        .filter(l => l.timestamp && l.timestamp.startsWith(todayStr) && (!l.athleteId || l.athleteId === user.id));
+        .filter(l =>
+          l.timestamp &&
+          l.timestamp.startsWith(todayStr) &&
+          (!l.athleteId || l.athleteId === user.id) &&
+          (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+        );
       const totalTonnage = todayLogs.reduce((acc, l) => acc + (Number(l.weight || 0) * Number(l.reps || 0)), 0);
       const totalSets = todayLogs.length;
       const rpe = todayLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
@@ -203,7 +208,11 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
         const isPast = dateStr < todayIso;
         const tplId = (isToday || isTomorrow || isPast) ? calendarService.getScheduledSession(d, user.id) : null;
         const tpl = tplId ? storageService.getWorkoutById(tplId) : undefined;
-        const dayLogs = allLogs.filter(l => l.timestamp.startsWith(dateStr) && (!l.athleteId || l.athleteId === user.id));
+        const dayLogs = allLogs.filter(l =>
+          l.timestamp.startsWith(dateStr) &&
+          (!l.athleteId || l.athleteId === user.id) &&
+          (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+        );
         const hasLogs = dayLogs.length > 0 || (isToday && completionStatus.isDone);
         // Seguridad IP: Solo días pasados y únicamente MAÑANA muestran el grupo muscular; días posteriores quedan 100% ocultos
         const focusLabel = isPast

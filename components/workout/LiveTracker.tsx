@@ -6,6 +6,7 @@ import { EXERCISES_DB } from '../../constants/exercises';
 import { getYoutubeEmbedUrl } from '../../lib/youtube';
 import { UnitConverterModal } from '../ui/UnitConverterModal';
 import { getWeightEquivalenceHint, WeightUnit } from '../../lib/units';
+import { QuickNotes } from './QuickNotes';
 
 interface Props {
   workout: Workout;
@@ -189,6 +190,30 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
   const [showConverter, setShowConverter] = useState(false);
   const [privacyShield, setPrivacyShield] = useState(false);
+  const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+
+  const previousNoteMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    workout.exercises.forEach(ex => {
+      const prev = storageService.getLastExerciseNote(ex.exerciseId, user?.id);
+      if (prev) map[ex.exerciseId] = prev;
+    });
+    return map;
+  }, [workout, user?.id]);
+
+  const handleExerciseNoteChange = (exerciseId: string, note: string) => {
+    setExerciseNotes(prev => ({ ...prev, [exerciseId]: note }));
+    setProgress(p => ({
+      ...p,
+      workoutLogs: p.workoutLogs.map(l =>
+        l.exerciseId === exerciseId ? { ...l, notes: note.trim() || undefined } : l
+      )
+    }));
+  };
+
+  const handleSaveExerciseNoteToCloud = async (exerciseId: string, note: string) => {
+    return storageService.saveExerciseQuickNote(exerciseId, note, user?.id, workout.id, workout.name);
+  };
 
   const goToExercise = (idx: number | null) => {
     setExpandedIdx(idx);
@@ -378,13 +403,15 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
         ? manualR 
         : (ghost?.reps || parseWeightValue(row.targetReps));
       
+      const currentExNote = exerciseNotes[row.exerciseId]?.trim();
       const log: WorkoutLog = {
         exerciseId: row.exerciseId,
         setIndex: row.globalIndex,
         weight: finalWeight,
         reps: finalReps,
         timestamp: new Date().toISOString(),
-        isPR: false
+        isPR: false,
+        notes: currentExNote || undefined
       };
 
       // Sound feedback on completion + persist values visibly for easy review when going back
@@ -916,6 +943,16 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     })}
                   </div>
 
+                  {/* NOTAS RÁPIDAS DEL ATLETA POR EJERCICIO (SIN IA · 0 TOKENS · SUPABASE) */}
+                  <QuickNotes
+                    exerciseId={ex.exerciseId}
+                    exerciseName={ex.name}
+                    value={exerciseNotes[ex.exerciseId] ?? ''}
+                    previousNote={previousNoteMap[ex.exerciseId]}
+                    onChange={note => handleExerciseNoteChange(ex.exerciseId, note)}
+                    onSaveToCloud={note => handleSaveExerciseNoteToCloud(ex.exerciseId, note)}
+                  />
+
                   {/* NAVEGACIÓN ENTRE EJERCICIOS ANTERIOR / SIGUIENTE */}
                   <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10">
                     <button
@@ -1276,6 +1313,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                         athleteId: user?.id,
                         workoutId: workout.id,
                         workoutName: workout.name,
+                        notes: exerciseNotes[log.exerciseId]?.trim() || log.notes,
                         feedback 
                       }));
                       onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });

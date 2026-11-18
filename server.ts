@@ -54,10 +54,21 @@ async function startServer() {
 
   app.get('/api/health', (_req: Request, res: Response) => {
     const apiKey = getGeminiApiKey();
+    const timeZone = process.env.KINETIX_TIMEZONE || 'America/Mexico_City';
+    const now = new Date();
+    const serverDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(now);
     res.json({
       ok: true,
       geminiConfigured: isGeminiKeyValid(apiKey),
-      model: GEMINI_MODEL
+      model: GEMINI_MODEL,
+      serverIso: now.toISOString(),
+      serverDate,
+      timeZone
     });
   });
 

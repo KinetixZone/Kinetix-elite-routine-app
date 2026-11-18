@@ -124,7 +124,7 @@ export const parseExercisesFromCSV = (csvText: string): Exercise[] => {
 // RUTINAS: EXPORTAR / PLANTILLA / IMPORTAR EXCEL (.CSV)
 // =========================================================
 
-export const exportWorkoutsToCSV = (workouts: Workout[]) => {
+export const exportWorkoutsToCSV = (workouts: Workout[], customFilename?: string) => {
   const headers = [
     'rutina_id',
     'rutina_nombre',
@@ -168,7 +168,7 @@ export const exportWorkoutsToCSV = (workouts: Workout[]) => {
   });
 
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-  downloadCSV(`kinetix_rutinas_${new Date().toISOString().split('T')[0]}.csv`, csv);
+  downloadCSV(customFilename || `kinetix_rutinas_${new Date().toISOString().split('T')[0]}.csv`, csv);
 };
 
 export const downloadWorkoutsTemplateCSV = () => {

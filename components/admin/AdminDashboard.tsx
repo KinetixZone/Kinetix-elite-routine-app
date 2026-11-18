@@ -253,8 +253,11 @@ CREATE TABLE IF NOT EXISTS public.workout_logs (
     weight NUMERIC DEFAULT 0,
     reps INTEGER DEFAULT 0,
     is_pr BOOLEAN DEFAULT false,
+    notes TEXT,
     timestamp TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.workout_logs ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- 5. TABLA DE MÉTRICAS CORPORALES Y ANTROPOMETRÍA (body_metrics)
 CREATE TABLE IF NOT EXISTS public.body_metrics (

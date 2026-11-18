@@ -29,18 +29,53 @@ export const WorkoutManager: React.FC = () => {
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [archivePreview, setArchivePreview] = useState<{
+    workouts: Workout[];
+    oldEventsCount: number;
+    cutoffIso: string;
+  } | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { refreshData(); }, []);
 
   const refreshData = async () => {
     const [all, cloudAthletes] = await Promise.all([
-      storageService.getTemplates(),
+      storageService.getTemplates(undefined, {
+        onRevalidate: (fresh) => setTemplates(fresh.filter(t => t.isTemplate !== false))
+      }),
       storageService.syncAthletesFromCloud()
     ]);
     setTemplates(all.filter(t => t.isTemplate !== false));
     setAthletes(cloudAthletes.filter(a => a.role !== 'owner'));
     setExerciseCount(storageService.getExercises().length);
+  };
+
+  const handlePrepareArchive = async () => {
+    setIsArchiving(true);
+    const info = await storageService.fetchArchivableRoutines(60);
+    setIsArchiving(false);
+    if (info.workouts.length === 0 && info.oldEventsCount === 0) {
+      notify('✨ Base limpia: no hay rutinas personalizadas o eventos con más de 60 días.');
+      return;
+    }
+    setArchivePreview(info);
+  };
+
+  const handleConfirmArchiveAndDownload = async () => {
+    if (!archivePreview) return;
+    setIsArchiving(true);
+    if (archivePreview.workouts.length > 0) {
+      exportWorkoutsToCSV(archivePreview.workouts, `kinetix_archivo_${archivePreview.cutoffIso}.csv`);
+    }
+    const { deletedWorkouts } = await storageService.purgeArchivedRoutines(
+      archivePreview.workouts.map(w => w.id),
+      archivePreview.cutoffIso
+    );
+    setArchivePreview(null);
+    setIsArchiving(false);
+    await refreshData();
+    notify(`🗄️ Archivo Excel descargado y depurados ${deletedWorkouts} registros antiguos (>60 días) sin tocar plantillas maestras.`);
   };
 
   const notify = (msg: string) => {
@@ -297,6 +332,14 @@ export const WorkoutManager: React.FC = () => {
                 >
                   ⬇ Exportar Excel
                 </button>
+                <button
+                  onClick={handlePrepareArchive}
+                  disabled={isArchiving}
+                  className="px-4 py-3 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/30 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px] disabled:opacity-40"
+                  title="Descarga en Excel y limpia rutinas personalizadas de hace +60 días para mantener ligera la nube"
+                >
+                  {isArchiving ? 'Revisando...' : '🗄️ Archivar >60d'}
+                </button>
                 <button 
                   onClick={() => setView('library')} 
                   className="bg-red-600/15 border border-red-500/40 text-red-300 hover:bg-red-600 hover:text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 min-h-[44px]"
@@ -355,6 +398,37 @@ export const WorkoutManager: React.FC = () => {
          <div className="mb-6 p-4 rounded-2xl bg-red-600/10 border border-red-500/30 text-red-400 text-xs font-black uppercase tracking-wider animate-in fade-in flex items-center justify-between">
            <span>⚠️ {errorMsg}</span>
            <button onClick={() => setErrorMsg(null)} className="text-white/40 hover:text-white text-xs px-2">✕</button>
+         </div>
+       )}
+       {archivePreview && (
+         <div className="mb-6 p-5 rounded-2xl bg-amber-950/50 border border-amber-500/40 space-y-3 animate-in fade-in">
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+             <div>
+               <p className="text-xs font-black uppercase tracking-wider text-amber-300">
+                 🗄️ Archivo Histórico anterior a {archivePreview.cutoffIso}
+               </p>
+               <p className="text-xs text-white/75 mt-1">
+                 Se encontraron <strong>{archivePreview.workouts.length}</strong> rutinas personalizadas antiguas y <strong>{archivePreview.oldEventsCount}</strong> eventos de calendario pasados. Primero se descargará el respaldo en Excel (.csv) y luego se liberará ese espacio en Supabase (sin tocar plantillas maestras ni PRs).
+               </p>
+             </div>
+             <div className="flex items-center gap-2 shrink-0">
+               <button
+                 type="button"
+                 onClick={() => setArchivePreview(null)}
+                 className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-black uppercase text-white"
+               >
+                 Cancelar
+               </button>
+               <button
+                 type="button"
+                 disabled={isArchiving}
+                 onClick={handleConfirmArchiveAndDownload}
+                 className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black uppercase tracking-wider disabled:opacity-40"
+               >
+                 {isArchiving ? 'Procesando...' : '⬇ Descargar Excel y Limpiar'}
+               </button>
+             </div>
+           </div>
          </div>
        )}
 

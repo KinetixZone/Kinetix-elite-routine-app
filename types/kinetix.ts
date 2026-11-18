@@ -112,6 +112,7 @@ export interface WorkoutLog {
   athleteId?: string;
   workoutId?: string;
   workoutName?: string;
+  notes?: string;
 }
 
 export interface BodyMetric {

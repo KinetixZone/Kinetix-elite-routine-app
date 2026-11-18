@@ -51,7 +51,12 @@ class CalendarService {
     const local = this.getEvents();
     if (!isSupabaseConfigured) return local;
     try {
-      const { data, error } = await supabase.from('kinetix_calendar').select('*');
+      const cutoffDate = new Date(Date.now() - 30 * 86400000);
+      const cutoffIso = this.getLocalDateStr(cutoffDate);
+      const { data, error } = await supabase
+        .from('kinetix_calendar')
+        .select('*')
+        .gte('start_at', cutoffIso);
       if (error || !data) return local;
       const cloudEvents = data.map(r => this.mapRowToEvent(r));
       const filtered = athleteId
@@ -59,7 +64,9 @@ class CalendarService {
         : cloudEvents;
 
       const map = new Map<string, CalendarEvent>();
-      local.forEach(e => map.set(e.id, e));
+      local
+        .filter(e => (e.start || '').slice(0, 10) >= cutoffIso)
+        .forEach(e => map.set(e.id, e));
       filtered.forEach(ce => map.set(ce.id, ce));
       const merged = Array.from(map.values());
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(merged));
