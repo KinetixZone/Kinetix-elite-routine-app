@@ -37,13 +37,69 @@ const DEFAULT_WORKOUT: Workout = {
   ]
 };
 
+type AppView = 'home' | 'manager' | 'tracker' | 'crm' | 'library' | 'athlete_home' | 'admin_dashboard';
+
+const VIEW_LABELS: Record<AppView, string> = {
+  home: 'Dashboard',
+  crm: 'Atletas',
+  manager: 'Rutinas',
+  library: 'Ejercicios',
+  tracker: 'Sesión en Vivo',
+  admin_dashboard: 'Sistema Core',
+  athlete_home: 'Atleta'
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [view, setView] = useState<'home' | 'manager' | 'tracker' | 'crm' | 'library' | 'athlete_home' | 'admin_dashboard'>('athlete_home');
+  const [view, setView] = useState<AppView>('athlete_home');
+  const [navHistory, setNavHistory] = useState<AppView[]>([]);
+  const [forwardHistory, setForwardHistory] = useState<AppView[]>([]);
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(EMPTY_WORKOUT);
   const [availableTemplates, setAvailableTemplates] = useState<Workout[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [showUnitConverter, setShowUnitConverter] = useState(false);
+
+  const navigateTo = useCallback((nextView: AppView) => {
+    setView(prev => {
+      if (prev === nextView) return prev;
+      setNavHistory(h => [...h.slice(-15), prev]);
+      setForwardHistory([]);
+      return nextView;
+    });
+  }, []);
+
+  const goBack = useCallback(() => {
+    setNavHistory(h => {
+      if (h.length === 0) {
+        setView(curr => {
+          if (curr !== 'home') {
+            setForwardHistory(f => [curr, ...f.slice(0, 14)]);
+            return 'home';
+          }
+          return curr;
+        });
+        return h;
+      }
+      const prev = h[h.length - 1];
+      setView(curr => {
+        setForwardHistory(f => [curr, ...f.slice(0, 14)]);
+        return prev;
+      });
+      return h.slice(0, -1);
+    });
+  }, []);
+
+  const goForward = useCallback(() => {
+    setForwardHistory(f => {
+      if (f.length === 0) return f;
+      const next = f[0];
+      setView(curr => {
+        setNavHistory(h => [...h.slice(-15), curr]);
+        return next;
+      });
+      return f.slice(1);
+    });
+  }, []);
 
   useEffect(() => {
     const initApp = async () => {
@@ -110,6 +166,8 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (newUser: User) => {
       setUser(newUser);
+      setNavHistory([]);
+      setForwardHistory([]);
       if (newUser.role === 'client') setView('athlete_home');
       else setView('home');
   };
@@ -117,6 +175,8 @@ const App: React.FC = () => {
   const handleLogout = () => {
       storageService.logout();
       setUser(null);
+      setNavHistory([]);
+      setForwardHistory([]);
       setCurrentWorkout(EMPTY_WORKOUT);
       setView('athlete_home');
   };
@@ -202,6 +262,31 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+                {/* Navegación Global Anterior / Siguiente para Coach y Dueños */}
+                <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-0.5">
+                    <button
+                        type="button"
+                        onClick={goBack}
+                        disabled={navHistory.length === 0 && view === 'home'}
+                        className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/80 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        title="Regresar a la vista anterior"
+                    >
+                        ← Regresar
+                    </button>
+                    <span className="text-[9px] font-black uppercase text-cyan-400 px-1.5 hidden md:inline">
+                        {VIEW_LABELS[view]}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={goForward}
+                        disabled={forwardHistory.length === 0}
+                        className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/80 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        title="Ir a la vista siguiente"
+                    >
+                        Siguiente →
+                    </button>
+                </div>
+
                 {/* Enlace a App de Control de Pagos (EXCLUSIVO DUEÑOS: LESLIE & JORGE) */}
                 {user.role === 'owner' && (
                     <a 
@@ -236,20 +321,20 @@ const App: React.FC = () => {
                 </button>
 
                 <button 
-                    onClick={() => setView('crm')} 
+                    onClick={() => navigateTo('crm')} 
                     className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
                 >
                     <span>👥</span> Atletas
                 </button>
                 <button 
-                    onClick={() => setView('manager')} 
+                    onClick={() => navigateTo('manager')} 
                     className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-[8px] font-black uppercase tracking-wider border border-white/5 transition-all"
                 >
                     <span>📐</span> Rutinas
                 </button>
                 {(user.role === 'admin' || user.role === 'owner') && (
                     <button 
-                        onClick={() => setView('admin_dashboard')} 
+                        onClick={() => navigateTo('admin_dashboard')} 
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[8px] font-black uppercase tracking-wider border border-blue-500/40 transition-all"
                     >
                         <span>⚙️</span> Sistema
@@ -266,20 +351,20 @@ const App: React.FC = () => {
         </header>
 
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/10 px-6 md:px-10 py-5 rounded-[35px] flex gap-8 md:gap-14 z-[500] shadow-[0_30px_70px_rgba(0,0,0,0.8)]">
-            <button onClick={() => setView('home')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+            <button onClick={() => navigateTo('home')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'home' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">📊</span>
                 <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Dashboard</span>
             </button>
-            <button onClick={() => setView('crm')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'crm' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+            <button onClick={() => navigateTo('crm')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'crm' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">👥</span>
                 <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Atletas</span>
             </button>
-            <button onClick={() => setView('manager')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'manager' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+            <button onClick={() => navigateTo('manager')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'manager' ? 'text-red-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                 <span className="text-xl">📐</span>
                 <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Rutinas</span>
             </button>
             {(user.role === 'admin' || user.role === 'owner') && (
-                <button onClick={() => setView('admin_dashboard')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+                <button onClick={() => navigateTo('admin_dashboard')} className={`group flex flex-col items-center gap-1 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-110' : 'text-white/40 hover:text-white'}`}>
                     <span className="text-xl">⚙️</span>
                     <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Sistema</span>
                 </button>
@@ -291,12 +376,12 @@ const App: React.FC = () => {
         </nav>
 
         <main className="animate-in fade-in duration-500">
-            {view === 'tracker' && <LiveTracker workout={currentWorkout} user={user} onFinish={handleFinishWorkout} />}
-            {view === 'home' && <CoachHome onViewChange={setView} currentUser={user} />}
+            {view === 'tracker' && <LiveTracker workout={currentWorkout} user={user} onFinish={handleFinishWorkout} onExit={goBack} />}
+            {view === 'home' && <CoachHome onViewChange={navigateTo} currentUser={user} />}
             {view === 'crm' && <AthleteCRM onSwitchUser={refreshWorkoutContext} currentUser={user} />}
-            {view === 'library' && <ExerciseLibrary />}
+            {view === 'library' && <ExerciseLibrary onBack={goBack} />}
             {view === 'manager' && <WorkoutManager />}
-            {view === 'admin_dashboard' && <AdminDashboard currentUser={user} onNavigate={setView} />}
+            {view === 'admin_dashboard' && <AdminDashboard currentUser={user} onNavigate={navigateTo} />}
         </main>
 
         {/* Modal Convertidor de Unidades KG ⇄ LBS */}

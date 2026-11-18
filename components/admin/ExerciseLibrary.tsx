@@ -129,7 +129,7 @@ const ExerciseEditModal: React.FC<{ exercise?: Exercise; onClose: () => void; on
 };
 
 // --- MAIN COMPONENT ---
-export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean }> = ({ isEmbedded = false }) => {
+export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => void }> = ({ isEmbedded = false, onBack }) => {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [undoStack, setUndoStack] = useState<Exercise[][]>([]);
   const [filter, setFilter] = useState('Todos');
@@ -237,6 +237,15 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean }> = ({ isEmbedded
        {/* HEADER & CONTROL TOTAL + EXCEL TOOLS */}
        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-6 gap-4">
           <div>
+             {onBack && !isEmbedded && (
+               <button
+                 type="button"
+                 onClick={onBack}
+                 className="mb-3 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 transition-all"
+               >
+                 ← Regresar
+               </button>
+             )}
              <p className="text-[10px] font-black uppercase text-red-500 tracking-[0.3em] mb-1">Control Total Coach & Dueña</p>
              <h1 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
                Biblioteca de Ejercicios

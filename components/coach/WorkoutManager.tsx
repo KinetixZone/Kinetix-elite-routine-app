@@ -305,7 +305,7 @@ export const WorkoutManager: React.FC = () => {
              </div>
           )}
           {view !== 'list' && (
-             <div className="flex gap-2">
+             <div className="flex flex-wrap gap-2">
                 {view === 'editor' && editorUndoStack.length > 0 && (
                   <button
                     onClick={handleEditorUndo}
@@ -314,7 +314,21 @@ export const WorkoutManager: React.FC = () => {
                     ↩ Deshacer Edición ({editorUndoStack.length})
                   </button>
                 )}
-                <button onClick={() => { setView('list'); refreshData(); }} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all min-h-[44px]">← VOLVER</button>
+                {view === 'editor' && editingTemplate && editingTemplate.name.trim() && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await storageService.saveTemplate(editingTemplate);
+                      await refreshData();
+                      setAssignTarget(editingTemplate);
+                      setView('assign');
+                    }}
+                    className="px-5 py-3 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+                  >
+                    Guardar y Asignar →
+                  </button>
+                )}
+                <button onClick={() => { setView('list'); refreshData(); }} className="bg-white/5 border border-white/10 hover:bg-white hover:text-black px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all min-h-[44px]">← Regresar a Rutinas</button>
              </div>
           )}
        </div>

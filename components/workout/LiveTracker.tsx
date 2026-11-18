@@ -166,6 +166,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
   const [feedback, setFeedback] = useState<SessionFeedback>({ rpe: 7, fatigue: 3, notes: '' });
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
   const [showConverter, setShowConverter] = useState(false);
+  const [privacyShield, setPrivacyShield] = useState(false);
 
   const goToExercise = (idx: number | null) => {
     setExpandedIdx(idx);
@@ -175,6 +176,27 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       }, 60);
     }
   };
+
+  // Protección anticaptura: bloqueo de atajos (PrintScreen, Ctrl+P/S/U) y escudo al cambiar de app/pestaña
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'PrintScreen' || ((e.ctrlKey || e.metaKey) && ['p', 's', 'u'].includes(e.key.toLowerCase()))) {
+        e.preventDefault();
+        setPrivacyShield(true);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        setPrivacyShield(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   // TONELAJE TOTAL COMPUTADO EN TIEMPO REAL
   const currentTonnage = useMemo(() => {
@@ -319,16 +341,18 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       const manualW = progress.performanceData[row.exerciseId]?.weights[row.globalIndex];
       const manualR = progress.performanceData[row.exerciseId]?.reps[row.globalIndex];
       const ghost = ghostMap[row.exerciseId];
+      const baseTargetKg = ghost?.weight || parseWeightValue(row.targetWeight);
       
-      const rawWeight = manualW !== undefined && manualW > 0 
-        ? manualW 
-        : (ghost?.weight || parseWeightValue(row.targetWeight));
+      const hasManualW = manualW !== undefined && !isNaN(manualW) && manualW > 0;
+      const finalWeight = hasManualW
+        ? (displayUnit === 'lbs' ? Math.round((manualW / 2.20462) * 10) / 10 : manualW)
+        : baseTargetKg;
 
-      const finalWeight = manualW !== undefined && manualW > 0 && displayUnit === 'lbs'
-        ? Math.round((rawWeight / 2.20462) * 10) / 10
-        : rawWeight;
+      const visibleWeightValue = hasManualW
+        ? manualW
+        : (displayUnit === 'lbs' ? Math.round(baseTargetKg * 2.20462 * 10) / 10 : baseTargetKg);
       
-      const finalReps = manualR !== undefined && manualR > 0 
+      const finalReps = manualR !== undefined && !isNaN(manualR) && manualR > 0 
         ? manualR 
         : (ghost?.reps || parseWeightValue(row.targetReps));
       
@@ -341,9 +365,23 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
         isPR: false
       };
 
-      // Sound feedback on completion
+      // Sound feedback on completion + persist values visibly for easy review when going back
       soundService.beepCountdown();
-      setProgress(p => ({ ...p, workoutLogs: [...p.workoutLogs, log] }));
+      setProgress(p => {
+        const exData = p.performanceData[row.exerciseId] || { weights: [], reps: [] };
+        const nextWeights = [...(exData.weights || [])];
+        const nextReps = [...(exData.reps || [])];
+        if (!hasManualW && visibleWeightValue > 0) nextWeights[row.globalIndex] = visibleWeightValue;
+        if ((manualR === undefined || isNaN(manualR) || manualR <= 0) && finalReps > 0) nextReps[row.globalIndex] = finalReps;
+        return {
+          ...p,
+          performanceData: {
+            ...p.performanceData,
+            [row.exerciseId]: { weights: nextWeights, reps: nextReps }
+          },
+          workoutLogs: [...p.workoutLogs, log]
+        };
+      });
 
       // Determinar si corresponde iniciar descanso según método fisiológico
       let shouldRest = true;
@@ -373,11 +411,27 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
   };
 
   const updateInput = (exId: string, idx: number, field: 'weights' | 'reps', val: string) => {
+    const parsed = parseFloat(val);
     setProgress(p => {
       const exData = p.performanceData[exId] || { weights: [], reps: [] };
       const newArr = [...(exData[field] || [])];
-      newArr[idx] = parseFloat(val);
-      return { ...p, performanceData: { ...p.performanceData, [exId]: { ...exData, [field]: newArr } } };
+      newArr[idx] = parsed;
+      // Si la serie ya estaba marcada como completada y el atleta vuelve atrás a corregirla, actualiza el registro en vivo
+      const updatedLogs = p.workoutLogs.map(l => {
+        if (l.exerciseId === exId && l.setIndex === idx) {
+          if (field === 'weights') {
+            const wKg = isNaN(parsed) ? 0 : (displayUnit === 'lbs' ? Math.round((parsed / 2.20462) * 10) / 10 : parsed);
+            return { ...l, weight: wKg };
+          }
+          return { ...l, reps: isNaN(parsed) ? 0 : parsed };
+        }
+        return l;
+      });
+      return {
+        ...p,
+        performanceData: { ...p.performanceData, [exId]: { ...exData, [field]: newArr } },
+        workoutLogs: updatedLogs
+      };
     });
   };
 
@@ -451,15 +505,37 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     );
   };
 
-  const forensicStamp = `🔒 PROPIEDAD INTELECTUAL KINETIX • LIC. JORGE GONZÁLEZ • ${(user?.name || 'ATLETA').toUpperCase()} • ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const folioCode = `KFX-JG-${(user?.id || 'ATLETA').slice(-4).toUpperCase()}-${new Date().toISOString().slice(5, 10).replace('-', '')}`;
+  const forensicStamp = `🔒 PROPIEDAD INTELECTUAL KINETIX • LIC. JORGE GONZÁLEZ • ${(user?.name || 'ATLETA').toUpperCase()} • FOLIO ${folioCode} • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const activeIdx = expandedIdx !== null ? expandedIdx : 0;
 
   return (
     <div 
-      className="min-h-screen bg-[#050507] text-white pb-36 relative overflow-hidden select-none"
+      className="min-h-screen bg-[#050507] text-white pb-40 relative overflow-hidden select-none"
       onContextMenu={(e) => e.preventDefault()}
       onCopy={(e) => e.preventDefault()}
       onCut={(e) => e.preventDefault()}
     >
+      {/* ESCUDO ANTICAPTURA / PRIVACIDAD AL SALIR DE LA VENTANA */}
+      {privacyShield && (
+        <div className="fixed inset-0 z-[200] bg-[#050507]/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in">
+          <div className="max-w-sm w-full bg-[#0F0F11] border border-red-500/40 rounded-3xl p-7 text-center space-y-4 shadow-2xl">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-2xl">🔒</div>
+            <h2 className="text-lg font-black uppercase italic text-white">Sesión Protegida Kinetix</h2>
+            <p className="text-xs text-white/60 leading-relaxed">
+              Metodología exclusiva de <strong className="text-white">Lic. Jorge González</strong>. Folio activo: <span className="font-mono text-cyan-400">{folioCode}</span>.
+            </p>
+            <button
+              type="button"
+              onClick={() => setPrivacyShield(false)}
+              className="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-wider transition-all"
+            >
+              Continuar Entrenamiento →
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* CAPA FORENSE ANTICAPTURA VISIBLE (PROPIEDAD INTELECTUAL) */}
       <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.14] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
         {Array.from({ length: 8 }).map((_, idx) => (
@@ -479,7 +555,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                 onClick={() => progress.workoutLogs.length > 0 ? setConfirmExit(true) : onExit()}
                 className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white/80 shrink-0"
               >
-                ← Salir
+                ← Regresar
               </button>
             )}
             <div className="min-w-0">
@@ -771,11 +847,20 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                               </div>
                               <input 
                                 type="number" 
-                                placeholder={ghost ? `${ghost.weight}` : row.targetWeight} 
+                                placeholder={(() => {
+                                  const refKg = ghost ? ghost.weight : parseWeightValue(row.targetWeight);
+                                  if (!refKg) return '0';
+                                  return displayUnit === 'lbs'
+                                    ? `${Math.round(refKg * 2.20462 * 10) / 10}`
+                                    : `${refKg}`;
+                                })()} 
                                 className={`w-full bg-transparent text-base font-black outline-none border-b border-white/10 focus:border-red-600 transition-colors ${
                                   ghost ? 'placeholder-white/40' : 'placeholder-white/10'
                                 }`} 
-                                value={progress.performanceData[row.exerciseId]?.weights[row.globalIndex] || ''} 
+                                value={(() => {
+                                  const v = progress.performanceData[row.exerciseId]?.weights[row.globalIndex];
+                                  return v !== undefined && !isNaN(v) ? v : '';
+                                })()} 
                                 onChange={e => updateInput(row.exerciseId, row.globalIndex, 'weights', e.target.value)} 
                               />
                             </div>
@@ -849,10 +934,55 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
             🔒 Propiedad Intelectual Kinetix Functional Zone • Lic. Jorge González
           </p>
           <p className="text-[10px] text-white/50">
-            Metodología Exclusiva Lic. Jorge González • Asignado a {user?.name || 'Atleta'} • Prohibida su copia
+            Metodología Exclusiva Lic. Jorge González · Folio {folioCode} · {user?.name || 'Atleta'} · Prohibida su copia
           </p>
         </div>
       </div>
+
+      {/* BARRA INFERIOR FIJA DE NAVEGACIÓN ENTRE EJERCICIOS (SIEMPRE ACCESIBLE) */}
+      {workout.exercises.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A0A0D]/95 backdrop-blur-xl border-t border-white/10 px-3 py-2.5">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            <button
+              type="button"
+              disabled={activeIdx <= 0}
+              onClick={() => goToExercise(Math.max(0, activeIdx - 1))}
+              className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 disabled:opacity-30 text-xs font-black uppercase tracking-wider text-white transition-all shrink-0"
+            >
+              ← Anterior
+            </button>
+
+            <button
+              type="button"
+              onClick={() => goToExercise(activeIdx)}
+              className="px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-center min-w-0 flex-1"
+            >
+              <span className="text-[10px] font-black uppercase text-cyan-400 block truncate">
+                Ej. {activeIdx + 1}/{workout.exercises.length} · {workout.exercises[activeIdx]?.name}
+              </span>
+              <span className="text-[9px] text-white/50">Toca Anterior para corregir series previas</span>
+            </button>
+
+            {activeIdx < workout.exercises.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => goToExercise(activeIdx + 1)}
+                className="px-4 py-3 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-wider transition-all shrink-0 shadow-lg"
+              >
+                Siguiente →
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCompleteRequest}
+                className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition-all shrink-0 shadow-lg"
+              >
+                Ok · Finalizar ✓
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* FLOATING TACTICAL REST TIMER BAR */}
       {restTimer && restTimer.active && (

@@ -68,6 +68,9 @@ const METHOD_LABEL: Record<string, string> = {
 
 export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSession, onLogout, onUserUpdate }) => {
   const [activeTab, setActiveTab] = useState<'train' | 'progress' | 'profile'>('train');
+  const [tabHistory, setTabHistory] = useState<Array<'train' | 'progress' | 'profile'>>([]);
+  const [tabForward, setTabForward] = useState<Array<'train' | 'progress' | 'profile'>>([]);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null);
   const [prsList] = useState<PRRecord[]>(() => storageService.getPRs());
   const [unitPref, setUnitPref] = useState<'kg' | 'lbs'>(user.preferredUnit || 'kg');
@@ -75,6 +78,48 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   const [confirmPwd, setConfirmPwd] = useState('');
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isSavingPwd, setIsSavingPwd] = useState(false);
+
+  const switchTab = (next: 'train' | 'progress' | 'profile') => {
+    setActiveTab(prev => {
+      if (prev === next) return prev;
+      setTabHistory(h => [...h.slice(-10), prev]);
+      setTabForward([]);
+      return next;
+    });
+  };
+
+  const goTabBack = () => {
+    setTabHistory(h => {
+      if (h.length === 0) {
+        setActiveTab(curr => {
+          if (curr !== 'train') {
+            setTabForward(f => [curr, ...f]);
+            return 'train';
+          }
+          return curr;
+        });
+        return h;
+      }
+      const prev = h[h.length - 1];
+      setActiveTab(curr => {
+        setTabForward(f => [curr, ...f]);
+        return prev;
+      });
+      return h.slice(0, -1);
+    });
+  };
+
+  const goTabForward = () => {
+    setTabForward(f => {
+      if (f.length === 0) return f;
+      const next = f[0];
+      setActiveTab(curr => {
+        setTabHistory(h => [...h.slice(-10), curr]);
+        return next;
+      });
+      return f.slice(1);
+    });
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,8 +186,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     const today = new Date();
     const todayIso = today.toISOString().split('T')[0];
     const dayOfWeek = today.getDay();
-    const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diffToMon));
+    const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) + weekOffset * 7;
+    const monday = new Date(today.getFullYear(), today.getMonth(), diffToMon);
     const allLogs = storageService.getAllLogs();
     const week = [];
     for (let i = 0; i < 7; i++) {
@@ -170,7 +215,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
         });
     }
     return week;
-  }, [user.id, completionStatus.isDone]);
+  }, [user.id, completionStatus.isDone, weekOffset]);
 
   const togglePreferredUnit = (u: 'kg' | 'lbs') => {
     setUnitPref(u);
@@ -217,10 +262,19 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
           </div>
 
           <div className="flex items-center gap-2 shrink-0 text-xs font-bold">
+            {activeTab !== 'train' && (
+              <button
+                type="button"
+                onClick={goTabBack}
+                className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-black transition-colors"
+              >
+                ← Regresar
+              </button>
+            )}
             <PWAInstallButton compact />
             <span className="text-cyan-400 tabular-nums">🔥 {user.streak || 0} días</span>
             <button 
-              onClick={() => setActiveTab('profile')}
+              onClick={() => switchTab('profile')}
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-xs font-bold transition-colors whitespace-nowrap"
             >
               Mi Cuenta
@@ -230,15 +284,59 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
       </header>
 
       <main className="relative z-20 max-w-5xl mx-auto pt-6 px-4 md:px-8 pb-28">
+         {activeTab !== 'train' && (
+           <div className="mb-4 flex items-center justify-between gap-2">
+             <button
+               type="button"
+               onClick={goTabBack}
+               className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-black uppercase tracking-wider text-white transition-all"
+             >
+               ← Anterior / Regresar
+             </button>
+             {tabForward.length > 0 && (
+               <button
+                 type="button"
+                 onClick={goTabForward}
+                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-black uppercase tracking-wider text-white transition-all"
+               >
+                 Siguiente →
+               </button>
+             )}
+           </div>
+         )}
          
          {activeTab === 'train' && (
              <div className="space-y-6 animate-in fade-in">
 
                  {/* CINTA SEMANAL INTERACTIVA */}
                  <section aria-label="Calendario semanal" className="bg-[#0F0F11] border border-white/10 rounded-3xl p-4">
-                    <div className="flex items-center justify-between px-1 mb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-3">
                        <h2 className="text-xs font-black uppercase tracking-wider text-white/70">Tu Semana de Entrenamiento</h2>
-                       <span className="text-[11px] text-white/40 font-semibold">Lic. Jorge González</span>
+                       <div className="flex items-center gap-1.5">
+                         <button
+                           type="button"
+                           onClick={() => { setSelectedDayIdx(null); setWeekOffset(w => w - 1); }}
+                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] font-black text-white/70 hover:text-white transition-colors"
+                         >
+                           ← Anterior
+                         </button>
+                         {weekOffset !== 0 && (
+                           <button
+                             type="button"
+                             onClick={() => { setSelectedDayIdx(null); setWeekOffset(0); }}
+                             className="px-2.5 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white text-[10px] font-black transition-colors"
+                           >
+                             Hoy
+                           </button>
+                         )}
+                         <button
+                           type="button"
+                           onClick={() => { setSelectedDayIdx(null); setWeekOffset(w => w + 1); }}
+                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] font-black text-white/70 hover:text-white transition-colors"
+                         >
+                           Siguiente →
+                         </button>
+                       </div>
                     </div>
                     <div className="grid grid-cols-7 gap-1.5">
                        {weeklyHorizon.map((d, i) => {
@@ -583,21 +681,21 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A0A0D]/95 backdrop-blur-xl border-t border-white/10">
         <div className="max-w-md mx-auto grid grid-cols-3 h-16 items-center">
           <button 
-            onClick={() => setActiveTab('train')} 
+            onClick={() => switchTab('train')} 
             className={`flex flex-col items-center justify-center gap-1 h-full transition-colors ${activeTab === 'train' ? 'text-red-500' : 'text-white/50 hover:text-white'}`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3L4 14h7v7l9-11h-7z"/></svg>
             <span className="text-[11px] font-bold">Entrenar</span>
           </button>
           <button 
-            onClick={() => setActiveTab('progress')} 
+            onClick={() => switchTab('progress')} 
             className={`flex flex-col items-center justify-center gap-1 h-full transition-colors ${activeTab === 'progress' ? 'text-cyan-400' : 'text-white/50 hover:text-white'}`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
             <span className="text-[11px] font-bold">Progreso</span>
           </button>
           <button 
-            onClick={() => setActiveTab('profile')} 
+            onClick={() => switchTab('profile')} 
             className={`flex flex-col items-center justify-center gap-1 h-full transition-colors ${activeTab === 'profile' ? 'text-white' : 'text-white/50 hover:text-white'}`}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>

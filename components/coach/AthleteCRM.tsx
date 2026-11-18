@@ -730,7 +730,42 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       {/* COCKPIT DEL ATLETA */}
       {selectedAthlete && (
         <div className="flex-[2] bg-[#0F0F11] border border-white/5 rounded-[40px] p-6 md:p-10 flex flex-col h-[calc(100vh-140px)] overflow-hidden shadow-2xl relative animate-in slide-in-from-right-10">
-           <button onClick={() => setSelectedAthlete(null)} className="md:hidden absolute top-6 right-6 text-white/40">✕</button>
+           {/* BARRA DE NAVEGACIÓN DE ATLETAS: REGRESAR / ANTERIOR / SIGUIENTE */}
+           <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-white/5">
+              <button
+                type="button"
+                onClick={() => setSelectedAthlete(null)}
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-[10px] font-black uppercase tracking-wider text-white transition-all"
+              >
+                ← Regresar a Lista
+              </button>
+              {(() => {
+                const idx = filteredAthletes.findIndex(a => a.id === selectedAthlete.id);
+                return (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={idx <= 0}
+                      onClick={() => idx > 0 && setSelectedAthlete(filteredAthletes[idx - 1])}
+                      className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[10px] font-black uppercase tracking-wider text-white transition-all"
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="text-[10px] font-mono text-white/40 tabular-nums">
+                      {idx >= 0 ? `${idx + 1} / ${filteredAthletes.length}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={idx < 0 || idx >= filteredAthletes.length - 1}
+                      onClick={() => idx >= 0 && idx < filteredAthletes.length - 1 && setSelectedAthlete(filteredAthletes[idx + 1])}
+                      className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[10px] font-black uppercase tracking-wider text-white transition-all"
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                );
+              })()}
+           </div>
            
            {/* TOAST NOTIFICATION BANNER */}
            {toastMsg && (
