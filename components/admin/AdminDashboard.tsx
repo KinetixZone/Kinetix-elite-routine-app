@@ -300,7 +300,7 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
   };
 
   return (
-    <div className="pt-20 md:pt-24 pb-32 px-4 md:px-6 max-w-7xl mx-auto min-h-screen text-white font-sans bg-[#050507] animate-in fade-in duration-700 relative overflow-hidden">
+    <div className="pt-6 md:pt-8 pb-32 px-4 md:px-6 max-w-7xl mx-auto min-h-screen text-white font-sans bg-[#050507] animate-in fade-in duration-700 relative overflow-hidden">
         
         <div className="absolute top-0 right-0 w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-red-600/5 blur-[100px] rounded-full -mr-32 -mt-32 pointer-events-none" />
 
@@ -478,7 +478,7 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                     <div className="bg-[#0F0F11] border border-red-500/20 rounded-[40px] p-8 space-y-6 flex flex-col">
                         <div className="flex items-center gap-3">
                             <span className="text-3xl">🐘</span>
-                            <h3 className="text-xl font-black uppercase italic text-red-500 tracking-tighter">SQL Búnker v7.2</h3>
+                            <h3 className="text-xl font-black uppercase italic text-red-500 tracking-tighter">SQL Búnker v7.3</h3>
                         </div>
                         <p className="text-[10px] text-white/40 uppercase font-bold leading-relaxed">Estructura definitiva: plantillas de rutinas, atletas, logs de RM y antropometría con RLS.</p>
                         
@@ -521,7 +521,7 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                         <div className="bg-black/60 border border-white/10 rounded-2xl p-5 space-y-2">
                             <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Paso 1: Crear Tablas</span>
                             <p className="text-[10px] text-white/40 leading-relaxed">
-                                Copia el <strong>SQL Búnker v7.2</strong> de arriba y ejecútalo en el <strong>SQL Editor</strong> de Supabase.
+                                Copia el <strong>SQL Búnker v7.3</strong> de arriba y ejecútalo en el <strong>SQL Editor</strong> de Supabase.
                             </p>
                         </div>
                         <div className="bg-black/60 border border-white/10 rounded-2xl p-5 space-y-2">

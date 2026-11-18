@@ -4,21 +4,32 @@ import { storageService, AthleteInsight } from '../../services/storageService';
 import { User, Workout } from '../../types/kinetix';
 
 export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUser?: User }> = ({ onViewChange, currentUser }) => {
-  const athletes = useMemo(() => storageService.getAthletes(), []);
-  // Fix: storageService.getTemplates() is async, so use useState + useEffect to avoid handling a raw Promise object.
+  const [refreshTick, setRefreshTick] = useState(0);
   const [templates, setTemplates] = useState<Workout[]>([]);
-  const exercises = useMemo(() => storageService.getExercises(), []);
-  const insights = useMemo(() => storageService.getAthleteInsights(), []);
-  const storageStats = storageService.getStorageUsage();
+  const exercises = useMemo(() => storageService.getExercises(), [refreshTick]);
+  const insights = useMemo(() => storageService.getAthleteInsights(), [refreshTick]);
   const [isClicking, setIsClicking] = useState(false);
 
-  // Load templates asynchronously on component mount
   useEffect(() => {
-    const loadTemplates = async () => {
-      const t = await storageService.getTemplates();
-      setTemplates(t);
+    let active = true;
+    const syncLive = async () => {
+      const [tpls] = await Promise.all([
+        storageService.getTemplates(undefined, {
+          onRevalidate: (fresh) => {
+            if (active) setTemplates(fresh.filter(t => t.isTemplate !== false));
+          }
+        }),
+        storageService.fetchServerTodayIso(),
+        storageService.syncAthletesFromCloud(),
+        storageService.syncLogsFromCloud()
+      ]);
+      if (active) {
+        setTemplates(tpls.filter(t => t.isTemplate !== false));
+        setRefreshTick(t => t + 1);
+      }
     };
-    loadTemplates();
+    syncLive();
+    return () => { active = false; };
   }, []);
 
   const handleAdminClick = () => {
@@ -27,6 +38,12 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
         onViewChange('admin_dashboard');
         setIsClicking(false);
     }, 150);
+  };
+
+  const openAthleteInCRM = (athleteId?: string, focusTab: 'profile' | 'calendar' | 'history' = 'profile') => {
+    if (athleteId) localStorage.setItem('kinetix_focus_athlete_id', athleteId);
+    localStorage.setItem('kinetix_focus_tab', focusTab);
+    onViewChange('crm');
   };
 
   const criticalInsights = insights.filter(i => i.status === 'critical' || i.status === 'warning');
@@ -58,13 +75,15 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
               LIVE <span className="text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-900 block md:inline">OPERATIONS</span>
            </h1>
         </div>
-        <button 
-              onClick={handleAdminClick}
-              className={`w-full md:w-auto px-10 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] transition-all shadow-xl flex items-center justify-center gap-4 border ${isClicking ? 'bg-white text-black scale-95' : 'bg-blue-600 text-white hover:bg-blue-500 border-blue-400/50'}`}
-           >
-              <span className={`text-xl ${isClicking ? 'animate-spin' : ''}`}>⚙️</span> 
-              {isClicking ? 'CONECTANDO...' : 'SISTEMA CORE'}
-        </button>
+        {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
+          <button 
+                onClick={handleAdminClick}
+                className={`w-full md:w-auto px-10 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] transition-all shadow-xl flex items-center justify-center gap-4 border ${isClicking ? 'bg-white text-black scale-95' : 'bg-blue-600 text-white hover:bg-blue-500 border-blue-400/50'}`}
+             >
+                <span className={`text-xl ${isClicking ? 'animate-spin' : ''}`}>⚙️</span> 
+                {isClicking ? 'CONECTANDO...' : 'SISTEMA CORE'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -72,7 +91,7 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
         <div className="lg:col-span-2 space-y-6">
             <div className="flex justify-between items-center px-4">
                 <h2 className="text-[11px] font-black uppercase tracking-[0.5em] text-white/30 italic">Situational Report (SITREP)</h2>
-                <span className="text-[8px] font-black text-red-600 animate-pulse uppercase">Actualizado Tiempo Real</span>
+                <span className="text-[8px] font-black text-red-600 uppercase">Actualizado Tiempo Real</span>
             </div>
 
             <div className="space-y-4">
@@ -82,45 +101,49 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
                     </div>
                 ) : insights.map((insight, idx) => (
                     <div
-                      key={idx}
-                      onClick={() => {
-                        if (insight.athleteId) {
-                          localStorage.setItem('kinetix_focus_athlete_id', insight.athleteId);
-                        }
-                        onViewChange('crm');
-                      }}
+                      key={insight.athleteId || idx}
+                      onClick={() => openAthleteInCRM(insight.athleteId, 'profile')}
                       className={`group relative bg-[#0F0F11] border rounded-[35px] p-6 md:p-8 transition-all hover:scale-[1.01] cursor-pointer ${insight.status === 'critical' ? 'border-red-600/40 shadow-[0_0_30px_rgba(220,38,38,0.1)]' : insight.status === 'warning' ? 'border-yellow-600/30' : 'border-white/5'}`}
                     >
                         <div className="flex justify-between items-start gap-3">
                             <div className="flex gap-4 md:gap-6 items-center min-w-0">
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${insight.status === 'critical' ? 'bg-red-600 text-white' : insight.status === 'warning' ? 'bg-yellow-500 text-black' : 'bg-white/5 text-white/40'}`}>
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shrink-0 ${insight.status === 'critical' ? 'bg-red-600 text-white' : insight.status === 'warning' ? 'bg-yellow-500 text-black' : 'bg-white/5 text-white/40'}`}>
                                     {insight.athleteName.charAt(0)}
                                 </div>
-                                <div>
-                                    <h3 className="text-2xl font-black uppercase italic tracking-tight">{insight.athleteName}</h3>
-                                    <p className={`text-[10px] font-bold uppercase mt-1 ${insight.status === 'critical' ? 'text-red-500' : insight.status === 'warning' ? 'text-yellow-500' : 'text-white/20'}`}>
+                                <div className="min-w-0">
+                                    <h3 className="text-xl md:text-2xl font-black uppercase italic tracking-tight truncate">{insight.athleteName}</h3>
+                                    <p className={`text-[10px] font-bold uppercase mt-1 ${insight.status === 'critical' ? 'text-red-500' : insight.status === 'warning' ? 'text-yellow-500' : 'text-white/40'}`}>
                                         {insight.message}
                                     </p>
                                 </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right shrink-0">
                                 <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">Compliance</p>
-                                <p className="text-2xl font-black italic">{insight.compliance}%</p>
+                                <p className="text-2xl font-black italic tabular-nums">{insight.compliance}%</p>
                             </div>
                         </div>
                         
                         {insight.lastRpe && (
-                            <div className="mt-6 pt-6 border-t border-white/5 flex gap-8 items-center">
+                            <div className="mt-6 pt-6 border-t border-white/5 flex flex-wrap gap-6 md:gap-8 items-center">
                                 <div className="flex flex-col">
                                     <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">Último RPE</span>
-                                    <span className={`text-lg font-black italic ${insight.lastRpe >= 9 ? 'text-red-600' : 'text-white'}`}>@{insight.lastRpe}</span>
+                                    <span className={`text-lg font-black italic tabular-nums ${insight.lastRpe >= 9 ? 'text-red-600' : 'text-white'}`}>@{insight.lastRpe}</span>
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">Última Actividad</span>
                                     <span className="text-[10px] font-black text-white/60 uppercase">{new Date(insight.lastWorkoutDate!).toLocaleDateString()}</span>
                                 </div>
                                 <div className="flex-1 text-right">
-                                    <button className="px-4 py-2 bg-white/5 hover:bg-white hover:text-black rounded-xl text-[8px] font-black uppercase tracking-widest transition-all">Ver Sesión</button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openAthleteInCRM(insight.athleteId, 'history');
+                                      }}
+                                      className="px-4 py-2 bg-white/5 hover:bg-white hover:text-black rounded-xl text-[8px] font-black uppercase tracking-widest transition-all"
+                                    >
+                                      Ver Sesión →
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -131,21 +154,48 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
 
         {/* COLUMNA 3: ESTADÍSTICAS RÁPIDAS */}
         <div className="space-y-6">
-            <div className="bg-gradient-to-br from-red-600 to-red-900 p-10 rounded-[45px] shadow-2xl relative overflow-hidden group">
-                <div className="absolute -right-4 -bottom-4 text-9xl opacity-10 font-black italic group-hover:scale-110 transition-transform">!</div>
-                <h4 className="text-[10px] font-black uppercase tracking-[0.4em] mb-2 text-white/60">Alertas Críticas</h4>
-                <p className="text-7xl font-black text-white italic tracking-tighter">{criticalInsights.length}</p>
-                <p className="text-[10px] font-black text-white/40 uppercase mt-4 tracking-widest">Requieren Intervención</p>
+            <div className="bg-gradient-to-br from-red-600 to-red-950 p-7 md:p-8 rounded-[38px] shadow-2xl relative overflow-hidden">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/75">Alertas Críticas</h4>
+                    <p className="text-6xl font-black text-white italic tracking-tighter tabular-nums mt-1">{criticalInsights.length}</p>
+                    <p className="text-[10px] font-bold text-white/70 mt-1">
+                      {criticalInsights.length > 0 ? 'Membresía vencida, pausa, inactividad o RPE alto' : 'Todo tu equipo está al día y estable'}
+                    </p>
+                  </div>
+                  <span className="text-4xl font-black italic text-white/15 select-none">!</span>
+                </div>
+
+                {criticalInsights.length > 0 && (
+                  <div className="mt-5 pt-4 border-t border-white/15 space-y-2">
+                    {criticalInsights.slice(0, 4).map((alert, aIdx) => (
+                      <button
+                        key={alert.athleteId || aIdx}
+                        type="button"
+                        onClick={() => openAthleteInCRM(alert.athleteId, alert.lastRpe && alert.lastRpe >= 9 ? 'history' : 'profile')}
+                        className="w-full text-left bg-black/35 hover:bg-black/60 border border-white/15 rounded-2xl px-3.5 py-2.5 transition-all flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-black uppercase text-white truncate">{alert.athleteName}</p>
+                          <p className="text-[10px] text-amber-200/90 truncate">{alert.message}</p>
+                        </div>
+                        <span className="text-[9px] font-black uppercase text-white bg-red-600 px-2.5 py-1 rounded-lg shrink-0">
+                          Revisar →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <div onClick={() => onViewChange('manager')} className="bg-[#0F0F11] border border-white/5 p-6 rounded-[35px] hover:border-white/20 transition-all cursor-pointer">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Templates</p>
-                    <p className="text-3xl font-black italic">{templates.length}</p>
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Rutinas Master</p>
+                    <p className="text-3xl font-black italic tabular-nums">{templates.length}</p>
                 </div>
                 <div onClick={() => onViewChange('library')} className="bg-[#0F0F11] border border-white/5 p-6 rounded-[35px] hover:border-white/20 transition-all cursor-pointer">
                     <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Ejercicios</p>
-                    <p className="text-3xl font-black italic">{exercises.length}</p>
+                    <p className="text-3xl font-black italic tabular-nums">{exercises.length}</p>
                 </div>
             </div>
 

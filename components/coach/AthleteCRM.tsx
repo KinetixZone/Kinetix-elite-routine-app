@@ -416,8 +416,11 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vip' | 'coaches' | 'vacaciones' | 'expiring' | 'suspended'>('all');
+  const [athleteSearch, setAthleteSearch] = useState('');
   const [tab, setTab] = useState<'profile' | 'calendar' | 'history'>('profile'); 
   const [editingInstance, setEditingInstance] = useState<Workout | null>(null);
+  const [instanceUndoStack, setInstanceUndoStack] = useState<Workout[]>([]);
+  const [exPickerSearch, setExPickerSearch] = useState('');
   const [clickedEvent, setClickedEvent] = useState<CalendarEvent | null>(null);
   const [calendarTrigger, setCalendarTrigger] = useState(0); 
   const [copiedKey, setCopiedKey] = useState(false);
@@ -440,9 +443,39 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [showFormModal, setShowFormModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
 
+  const openEditingInstance = (workout: Workout) => {
+    setInstanceUndoStack([]);
+    setExPickerSearch('');
+    setConfirmRemoveExerciseIdx(null);
+    setEditingInstance(workout);
+  };
+
+  const updateEditingInstanceWithUndo = (next: Workout) => {
+    if (editingInstance) {
+      setInstanceUndoStack(prev => [...prev.slice(-14), JSON.parse(JSON.stringify(editingInstance))]);
+    }
+    setEditingInstance(next);
+  };
+
+  const handleUndoInstanceEdit = () => {
+    if (instanceUndoStack.length === 0) return;
+    const prev = instanceUndoStack[instanceUndoStack.length - 1];
+    setInstanceUndoStack(s => s.slice(0, -1));
+    setEditingInstance(prev);
+  };
+
+  const moveInstanceExercise = (idx: number, dir: -1 | 1) => {
+    if (!editingInstance) return;
+    const arr = [...editingInstance.exercises];
+    const target = idx + dir;
+    if (target < 0 || target >= arr.length) return;
+    [arr[idx], arr[target]] = [arr[target], arr[idx]];
+    updateEditingInstanceWithUndo({ ...editingInstance, exercises: arr });
+  };
+
   const handleStartCustomWorkout = (baseTemplate?: Workout) => {
     if (!selectedAthlete) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = storageService.getLocalTodayIso();
     const newId = `custom-${selectedAthlete.id}-${Date.now()}`;
     const custom: Workout = baseTemplate ? JSON.parse(JSON.stringify(baseTemplate)) : {
       id: newId,
@@ -462,7 +495,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     custom.assignedTo = selectedAthlete.id;
     custom.scheduledDate = today;
     custom.isTemplate = false;
-    setEditingInstance(custom);
+    openEditingInstance(custom);
     setShowCustomModal(false);
   };
   const [athleteToEdit, setAthleteToEdit] = useState<User | null>(null);
@@ -474,6 +507,11 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
 
   useEffect(() => {
     const focusId = localStorage.getItem('kinetix_focus_athlete_id');
+    const focusTab = localStorage.getItem('kinetix_focus_tab') as 'profile' | 'calendar' | 'history' | null;
+    if (focusTab && ['profile', 'calendar', 'history'].includes(focusTab)) {
+      setTab(focusTab);
+      localStorage.removeItem('kinetix_focus_tab');
+    }
     const list = storageService.getAthletes();
     setAthletes(list);
     if (focusId) {
@@ -596,7 +634,14 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   };
 
   const filteredAthletes = useMemo(() => {
+      const q = athleteSearch.trim().toLowerCase();
       return athletes.filter(a => {
+          if (q) {
+            const matchName = a.name.toLowerCase().includes(q);
+            const matchUser = (a.username || '').toLowerCase().includes(q);
+            const matchMail = a.email.toLowerCase().includes(q);
+            if (!matchName && !matchUser && !matchMail) return false;
+          }
           if (filter === 'all') return true;
           if (filter === 'active') return a.isActive !== false;
           if (filter === 'suspended') return a.isActive === false;
@@ -615,7 +660,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
           }
           return true;
       });
-  }, [athletes, filter]);
+  }, [athletes, filter, athleteSearch]);
 
   const handleUpdateUser = async (updates: Partial<User>) => {
       if (!selectedAthlete) return;
@@ -744,6 +789,14 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
           </a>
         )}
 
+        <input
+          type="text"
+          value={athleteSearch}
+          onChange={e => setAthleteSearch(e.target.value)}
+          placeholder="🔍 Buscar atleta por nombre o @usuario..."
+          className="w-full bg-black/70 border border-white/10 focus:border-cyan-500 rounded-2xl px-4 py-2.5 text-xs font-bold text-white placeholder-white/30 outline-none"
+        />
+
         <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
              {[
                { id: 'all', label: 'Todos' },
@@ -866,21 +919,28 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                   onClick={async () => {
                     const travelTemplate = templates.find(t => t.category === 'travel') || templates[0];
                     if (travelTemplate) {
-                      const today = new Date().toISOString().split('T')[0];
+                      const today = storageService.getLocalTodayIso();
+                      const clone: Workout = JSON.parse(JSON.stringify(travelTemplate));
+                      clone.id = `inst-${selectedAthlete.id}-${today}-${Date.now()}`;
+                      clone.isTemplate = false;
+                      clone.assignedTo = selectedAthlete.id;
+                      clone.scheduledDate = today;
+                      clone.location = 'Remoto / Vacaciones';
+                      await storageService.saveUserSpecificWorkout(clone);
                       calendarService.saveEvent({
                         id: `evt-travel-${Date.now()}`,
                         type: 'workout',
-                        title: `🏖️ ${travelTemplate.name}`,
+                        title: `🏖️ ${clone.name}`,
                         start: `${today}T10:00:00`,
                         end: `${today}T11:00:00`,
                         allDay: true,
                         coachId: 'jorge',
                         athleteIds: [selectedAthlete.id],
-                        workoutTemplateId: travelTemplate.id,
+                        workoutTemplateId: clone.id,
                         location: 'Remoto / Vacaciones'
                       });
                       setCalendarTrigger(prev => prev + 1);
-                      setToastMsg(`Rutina de Vacaciones asignada a ${selectedAthlete.name.split(' ')[0]}`);
+                      setToastMsg(`Rutina de Vacaciones asignada exclusivamente a ${selectedAthlete.name.split(' ')[0]}`);
                       setTimeout(() => setToastMsg(null), 3500);
                     }
                   }}
@@ -1198,11 +1258,20 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               {tab === 'calendar' && (
                 <AthleteCalendar 
                   athleteId={selectedAthlete.id} 
-                  onDayClick={(dateStr, event) => {
+                  onDayClick={async (dateStr, event) => {
                     if (event) {
                         setClickedEvent(event);
-                        const workout = storageService.getWorkoutById(event.workoutTemplateId!) || {
-                            id: event.workoutTemplateId || `inst-${selectedAthlete.id}-${Date.now()}`,
+                        const rawWorkout = event.workoutTemplateId
+                          ? (storageService.getWorkoutById(event.workoutTemplateId) || (await storageService.getTemplateByIdCloud(event.workoutTemplateId)))
+                          : undefined;
+
+                        const sharedEventsCount = event.workoutTemplateId
+                          ? calendarService.getEvents().filter(e => e.workoutTemplateId === event.workoutTemplateId).length
+                          : 0;
+
+                        if (!rawWorkout) {
+                          openEditingInstance({
+                            id: `inst-${selectedAthlete.id}-${dateStr}-${Date.now()}`,
                             name: event.title || 'Entrenamiento Kinetix',
                             day: 1,
                             exercises: [],
@@ -1210,8 +1279,33 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                             scheduledDate: dateStr,
                             assignedTo: selectedAthlete.id,
                             location: event.location
-                        };
-                        setEditingInstance(workout);
+                          });
+                          return;
+                        }
+
+                        // Aislamiento estricto: si apunta a una plantilla maestra, a otro atleta, o se comparte entre varios días,
+                        // clonamos automáticamente para editar SOLO este día y SOLO este atleta sin afectar a nadie más.
+                        const needsIsolationFork =
+                          rawWorkout.isTemplate !== false ||
+                          (rawWorkout.assignedTo && rawWorkout.assignedTo !== selectedAthlete.id) ||
+                          sharedEventsCount > 1;
+
+                        if (needsIsolationFork) {
+                          const forked: Workout = JSON.parse(JSON.stringify(rawWorkout));
+                          forked.id = `inst-${selectedAthlete.id}-${dateStr}-${Date.now()}`;
+                          forked.isTemplate = false;
+                          forked.assignedTo = selectedAthlete.id;
+                          forked.scheduledDate = dateStr;
+                          forked.location = event.location ?? forked.location;
+                          openEditingInstance(forked);
+                        } else {
+                          openEditingInstance({
+                            ...JSON.parse(JSON.stringify(rawWorkout)),
+                            scheduledDate: rawWorkout.scheduledDate || dateStr,
+                            assignedTo: selectedAthlete.id,
+                            isTemplate: false
+                          });
+                        }
                     } else {
                         setClickedEvent(null);
                         setAssigningDate(dateStr);
@@ -1405,39 +1499,51 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
         />
       )}
 
-      {/* MODAL: EDICIÓN COMPLETA DE LA RUTINA ASIGNADA */}
+      {/* MODAL: EDICIÓN COMPLETA Y AISLADA DE LA RUTINA DEL ATLETA */}
       {editingInstance && (
           <div className="fixed inset-0 z-[2000] bg-[#0F0F11] flex flex-col p-4 md:p-8 animate-in slide-in-from-bottom-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 shrink-0 border-b border-white/5 pb-4">
-                  <div className="space-y-1">
-                      <div className="flex items-center gap-3">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 shrink-0 border-b border-white/10 pb-4">
+                  <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input 
                           type="text" 
-                          className="bg-transparent text-2xl font-black uppercase italic text-red-500 outline-none border-b border-transparent focus:border-red-500"
+                          className="bg-transparent text-xl md:text-2xl font-black uppercase italic text-red-500 outline-none border-b border-transparent focus:border-red-500 min-w-0"
                           value={editingInstance.name}
-                          onChange={e => setEditingInstance({ ...editingInstance, name: e.target.value })}
+                          onChange={e => updateEditingInstanceWithUndo({ ...editingInstance, name: e.target.value })}
                         />
-                        <span className="text-white/40 text-xs font-mono">({editingInstance.scheduledDate})</span>
+                        <span className="text-white/50 text-xs font-mono">({editingInstance.scheduledDate})</span>
                       </div>
-                      <p className="text-[9px] font-black uppercase text-white/30 tracking-widest">
-                        Sesión Individual para {selectedAthlete?.name}
+                      <p className="text-[10px] font-bold text-cyan-300">
+                        🛡️ Edición Exclusiva para <strong>{selectedAthlete?.name}</strong> · No altera plantillas maestras ni a otros atletas.
                       </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="flex flex-wrap gap-2">
+                      {instanceUndoStack.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleUndoInstanceEdit}
+                          className="px-3.5 py-2.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 rounded-xl text-[9px] uppercase font-black transition-all"
+                        >
+                          ↩ Deshacer ({instanceUndoStack.length})
+                        </button>
+                      )}
                       <button 
+                        type="button"
                         onClick={() => setShowPropagateModal(true)}
                         className="px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 rounded-xl text-[9px] uppercase font-black transition-all flex items-center gap-1.5"
                       >
                         🔄 Propagar a Semanas
                       </button>
                       <button 
+                        type="button"
                         onClick={handleSaveAsMasterTemplate}
                         className="px-4 py-2.5 bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 rounded-xl text-[9px] uppercase font-black transition-all flex items-center gap-1.5"
                       >
                         💾 Guardar como Master
                       </button>
                       <button 
+                        type="button"
                         onClick={() => {
                           if (clickedEvent) {
                               calendarService.deleteEvent(clickedEvent.id);
@@ -1455,41 +1561,48 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                         Eliminar Día 🗑
                       </button>
                       <button 
+                        type="button"
                         onClick={() => { setEditingInstance(null); setClickedEvent(null); }} 
                         className="px-4 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-[9px] uppercase font-black"
                       >
-                        Cerrar
+                        ← Regresar
                       </button>
                       <button 
+                        type="button"
                         onClick={async () => {
-                          await storageService.saveUserSpecificWorkout(editingInstance);
+                          const isolatedToSave: Workout = {
+                            ...editingInstance,
+                            isTemplate: false,
+                            assignedTo: selectedAthlete!.id
+                          };
+                          await storageService.saveUserSpecificWorkout(isolatedToSave);
                           calendarService.saveEvent({ 
-                              id: clickedEvent ? clickedEvent.id : `evt-${editingInstance.id}`, 
+                              id: clickedEvent ? clickedEvent.id : `evt-${isolatedToSave.id}`, 
                               type: 'workout', 
-                              title: editingInstance.name, 
-                              start: `${editingInstance.scheduledDate}T12:00:00`, 
-                              end: `${editingInstance.scheduledDate}T13:00:00`, 
+                              title: isolatedToSave.name, 
+                              start: `${isolatedToSave.scheduledDate}T12:00:00`, 
+                              end: `${isolatedToSave.scheduledDate}T13:00:00`, 
                               allDay: true, 
                               coachId: 'jorge', 
                               athleteIds: [selectedAthlete!.id], 
-                              workoutTemplateId: editingInstance.id, 
-                              location: editingInstance.location 
+                              workoutTemplateId: isolatedToSave.id, 
+                              location: isolatedToSave.location 
                           });
                           setCalendarTrigger(prev => prev + 1);
                           setEditingInstance(null);
                           setClickedEvent(null);
-                          setToastMsg("Cambios guardados y sincronizados para este atleta.");
+                          setToastMsg(`✅ Cambios guardados solo para ${selectedAthlete?.name.split(' ')[0]}.`);
                           setTimeout(() => setToastMsg(null), 3500);
                         }} 
                         className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-[9px] uppercase font-black shadow-lg transition-all"
                       >
-                        Guardar Cambios ✓
+                        Guardar Solo para {selectedAthlete?.name.split(' ')[0]} ✓
                       </button>
                   </div>
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-20">
-                  <div onClick={() => setEditingInstance({...editingInstance, location: editingInstance.location ? undefined : 'Kinetix Functional Zone'})} className={`p-4 rounded-3xl border flex items-center justify-between cursor-pointer transition-all ${editingInstance.location ? 'bg-red-600/10 border-red-600' : 'bg-white/5 border-white/5'}`}>
+                  <div onClick={() => updateEditingInstanceWithUndo({...editingInstance, location: editingInstance.location ? undefined : 'Kinetix Functional Zone'})} className={`p-4 rounded-3xl border flex items-center justify-between cursor-pointer transition-all ${editingInstance.location ? 'bg-red-600/10 border-red-600' : 'bg-white/5 border-white/5'}`}>
                       <div>
                         <p className="text-xs font-black uppercase">
                           Modo: {editingInstance.location ? 'Presencial (Sede Kinetix)' : 'Entrenamiento Remoto'}
@@ -1500,22 +1613,30 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
 
                   {editingInstance.exercises.map((ex, idx) => (
                       <div key={idx} className="relative group">
-                          <ExerciseBlockEditor 
-                            exercise={ex} 
-                            onUpdate={(u) => {
-                              const newExs = [...editingInstance.exercises];
-                              newExs[idx] = u;
-                              setEditingInstance({ ...editingInstance, exercises: newExs });
-                            }} 
-                          />
-                          <div className="absolute top-4 right-4 z-10 flex gap-2">
+                          <div className="flex justify-end gap-2 px-3 pb-2">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveInstanceExercise(idx, -1)}
+                                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[9px] font-black text-white"
+                              >
+                                ↑ Subir
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === editingInstance.exercises.length - 1}
+                                onClick={() => moveInstanceExercise(idx, 1)}
+                                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 disabled:opacity-25 text-[9px] font-black text-white"
+                              >
+                                ↓ Bajar
+                              </button>
                               {confirmRemoveExerciseIdx === idx ? (
                                 <div className="flex items-center gap-1.5 bg-red-950/90 border border-red-500/50 px-2.5 py-1 rounded-xl">
                                   <button
                                     type="button"
                                     onClick={() => {
                                       const newExs = editingInstance.exercises.filter((_, i) => i !== idx);
-                                      setEditingInstance({ ...editingInstance, exercises: newExs });
+                                      updateEditingInstanceWithUndo({ ...editingInstance, exercises: newExs });
                                       setConfirmRemoveExerciseIdx(null);
                                     }}
                                     className="bg-red-600 text-white px-2.5 py-1 rounded-lg text-[8px] font-black uppercase"
@@ -1534,23 +1655,38 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                 <button 
                                     type="button"
                                     onClick={() => setConfirmRemoveExerciseIdx(idx)} 
-                                    className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all"
+                                    className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 px-3 py-1 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all"
                                 >
-                                    Eliminar Ejercicio ✕
+                                    Eliminar ✕
                                 </button>
                               )}
                           </div>
+                          <ExerciseBlockEditor 
+                            exercise={ex} 
+                            onUpdate={(u) => {
+                              const newExs = [...editingInstance.exercises];
+                              newExs[idx] = u;
+                              updateEditingInstanceWithUndo({ ...editingInstance, exercises: newExs });
+                            }} 
+                          />
                       </div>
                   ))}
 
-                  {/* AGREGAR EJERCICIO DESDE BIBLIOTECA */}
-                  <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-[32px] p-6 text-center space-y-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                        Añadir Ejercicio a la Sesión del Atleta
+                  {/* AGREGAR EJERCICIO DESDE BIBLIOTECA CON BUSCADOR */}
+                  <div className="bg-white/[0.02] border border-dashed border-white/15 rounded-[32px] p-6 space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-cyan-400 text-center">
+                        + Añadir Ejercicio a la Sesión de {selectedAthlete?.name.split(' ')[0]}
                       </p>
-                      <div className="flex flex-wrap items-center justify-center gap-3">
+                      <div className="max-w-xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={exPickerSearch}
+                          onChange={e => setExPickerSearch(e.target.value)}
+                          placeholder="🔍 Filtrar ejercicio (ej: sentadilla, press)..."
+                          className="bg-black border border-white/15 focus:border-cyan-500 rounded-2xl px-4 py-3 text-xs font-bold text-white placeholder-white/30 outline-none"
+                        />
                         <select 
-                          className="bg-black border border-white/10 rounded-2xl p-3 text-xs font-bold text-white outline-none min-w-[240px]"
+                          className="bg-black border border-white/15 rounded-2xl p-3 text-xs font-bold text-white outline-none"
                           onChange={(e) => {
                             if (!e.target.value) return;
                             const found = allExercises.find(ex => ex.id === e.target.value);
@@ -1569,17 +1705,23 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                 videoUrl: found.videoUrl,
                                 method: 'standard'
                               };
-                              setEditingInstance({ ...editingInstance, exercises: [...editingInstance.exercises, newEx] });
+                              updateEditingInstanceWithUndo({ ...editingInstance, exercises: [...editingInstance.exercises, newEx] });
                               e.target.value = '';
                             }
                           }}
                         >
-                          <option value="">-- SELECCIONAR DE BIBLIOTECA --</option>
-                          {allExercises.map(ex => (
-                            <option key={ex.id} value={ex.id}>
-                              {ex.muscleGroup.toUpperCase()}: {ex.name}
-                            </option>
-                          ))}
+                          <option value="">-- SELECCIONAR Y AÑADIR --</option>
+                          {allExercises
+                            .filter(ex => {
+                              const q = exPickerSearch.trim().toLowerCase();
+                              if (!q) return true;
+                              return ex.name.toLowerCase().includes(q) || ex.muscleGroup.toLowerCase().includes(q);
+                            })
+                            .map(ex => (
+                              <option key={ex.id} value={ex.id}>
+                                {ex.muscleGroup.toUpperCase()}: {ex.name}
+                              </option>
+                            ))}
                         </select>
                       </div>
                   </div>
@@ -1589,8 +1731,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
 
       {/* MODAL: ASIGNACIÓN DE RUTINAS PREGUARDADAS + PROPAGACIÓN */}
       {assigningDate && (
-          <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95">
-              <div className="bg-[#0F0F11] w-full max-w-lg rounded-[40px] border border-white/10 p-8 shadow-2xl relative animate-in zoom-in-95 duration-200 space-y-6">
+          <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95">
+              <div className="bg-[#0F0F11] w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[36px] border border-white/10 p-6 md:p-8 shadow-2xl relative space-y-6">
                   <div>
                     <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Asignar Rutina</h2>
                     <p className="text-[9px] text-white/40 font-bold uppercase tracking-widest mt-1">
@@ -1682,6 +1824,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                   
                                   const baseDate = new Date(`${assigningDate}T12:00:00`);
                                   let firstInstance: Workout | null = null;
+                                  let firstEvent: CalendarEvent | null = null;
 
                                   for (let w = 0; w < assignWeeks; w++) {
                                       const curDate = new Date(baseDate);
@@ -1707,8 +1850,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                           });
                                       }
 
-                                      await storageService.saveUserSpecificWorkout(instance);
-                                      calendarService.saveEvent({ 
+                                      const calEvt: CalendarEvent = {
                                           id: `evt-${newId}`, 
                                           type: 'workout', 
                                           title: instance.name, 
@@ -1718,15 +1860,22 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                           coachId: 'jorge', 
                                           athleteIds: [selectedAthlete.id], 
                                           workoutTemplateId: newId 
-                                      });
+                                      };
 
-                                      if (w === 0) firstInstance = instance;
+                                      await storageService.saveUserSpecificWorkout(instance);
+                                      calendarService.saveEvent(calEvt);
+
+                                      if (w === 0) {
+                                        firstInstance = instance;
+                                        firstEvent = calEvt;
+                                      }
                                   }
                                   
                                   setCalendarTrigger(prev => prev + 1);
                                   setAssigningDate(null);
                                   if (assignImmediateEdit && firstInstance) {
-                                      setEditingInstance(firstInstance);
+                                      setClickedEvent(firstEvent);
+                                      openEditingInstance(firstInstance);
                                   }
                               }} 
                               className="flex-1 py-4 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
@@ -1808,7 +1957,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
       {/* MODAL: PERSONALIZAR O CREAR RUTINA PARA ESTE ATLETA */}
       {showCustomModal && selectedAthlete && (
         <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-[#0F0F11] border border-red-500/30 w-full max-w-lg rounded-[36px] p-8 shadow-2xl space-y-6">
+          <div className="bg-[#0F0F11] border border-red-500/30 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[36px] p-6 md:p-8 shadow-2xl space-y-6">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[0.3em] text-red-500">Coach Workspace</p>

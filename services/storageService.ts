@@ -700,7 +700,8 @@ class StorageService {
     const idx = localTemplates.findIndex((t: any) => t.id === template.id);
     if (idx >= 0) localTemplates[idx] = template; else localTemplates.push(template);
     localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(localTemplates));
-    this.writeTemplatesCacheMeta(template.assignedTo || 'staff');
+    const currentUser = this.getUser();
+    this.writeTemplatesCacheMeta(currentUser?.role === 'client' ? currentUser.id : 'staff');
 
     if (isSupabaseConfigured) {
         try {
@@ -741,9 +742,9 @@ class StorageService {
     try {
       const data = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
       const all: Workout[] = data ? JSON.parse(data) : [];
-      return all.find(w => w.id === id);
+      return all.find(w => w.id === id) || PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
     } catch {
-      return undefined;
+      return PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
     }
   }
 
@@ -1417,7 +1418,11 @@ class StorageService {
 
     return athletes.map((ath): AthleteInsight => {
       const athLogs = logs
-        .filter(l => l.athleteId === ath.id)
+        .filter(
+          l =>
+            l.athleteId === ath.id &&
+            (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+        )
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
       const uniqueRecentDays = new Set(

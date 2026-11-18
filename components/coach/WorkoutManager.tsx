@@ -19,6 +19,9 @@ export const WorkoutManager: React.FC = () => {
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
   const [exerciseCount, setExerciseCount] = useState<number>(0);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'general' | 'travel' | 'personalizado'>('all');
+  const [tplSearch, setTplSearch] = useState('');
+  const [athleteSearch, setAthleteSearch] = useState('');
+  const [editorExSearch, setEditorExSearch] = useState('');
   const [projConfig, setProjConfig] = useState({ 
     startDate: new Date().toISOString().split('T')[0], 
     weeks: 4, 
@@ -256,13 +259,13 @@ export const WorkoutManager: React.FC = () => {
     updateEditingWithUndo({ ...editingTemplate, exercises: arr });
   };
 
-  const addBlock = () => {
+  const addBlock = (exerciseId?: string) => {
     if (!editingTemplate) return;
     const allExs = storageService.getExercises();
-    const firstEx = allExs[0] || { id: 'ex-1', name: 'Press Horizontal', muscleGroup: 'Pecho', videoUrl: '', technique: '' };
+    const chosen = (exerciseId ? allExs.find(e => e.id === exerciseId) : allExs[0]) || allExs[0] || { id: 'ex-1', name: 'Press Horizontal', muscleGroup: 'Pecho', videoUrl: '', technique: '' };
     const newEx: WorkoutExercise = {
-        exerciseId: firstEx.id,
-        name: firstEx.name,
+        exerciseId: chosen.id,
+        name: chosen.name,
         targetSets: 3,
         targetReps: '10',
         targetLoad: '0',
@@ -270,9 +273,9 @@ export const WorkoutManager: React.FC = () => {
         targetRir: '2',
         tempo: '3-0-1-0',
         setType: 'straight',
-        coachCue: firstEx.technique,
+        coachCue: chosen.technique,
         method: 'standard',
-        videoUrl: firstEx.videoUrl
+        videoUrl: chosen.videoUrl
     };
     updateEditingWithUndo({
         ...editingTemplate,
@@ -433,27 +436,38 @@ export const WorkoutManager: React.FC = () => {
        )}
 
        {view === 'list' && (
-         <div className="space-y-6">
-            <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
-               {[
-                 { id: 'all', label: 'Todas las Rutinas' },
-                 { id: 'travel', label: '🏖️ Vacaciones / Viaje' },
-                 { id: 'personalizado', label: '⭐ Personalizados Jorge' },
-                 { id: 'general', label: 'Pesas & Funcional' }
-               ].map(cat => (
-                 <button 
-                   key={cat.id} 
-                   onClick={() => setCategoryFilter(cat.id as any)}
-                   className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap transition-all ${categoryFilter === cat.id ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
-                 >
-                   {cat.label}
-                 </button>
-               ))}
+         <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={tplSearch}
+                onChange={e => setTplSearch(e.target.value)}
+                placeholder="🔍 Buscar rutina por nombre..."
+                className="flex-1 bg-[#0F0F11] border border-white/10 focus:border-cyan-500 rounded-2xl px-4 py-3 text-xs font-bold text-white placeholder-white/30 outline-none"
+              />
+              <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
+                 {[
+                   { id: 'all', label: 'Todas las Rutinas' },
+                   { id: 'travel', label: '🏖️ Vacaciones / Viaje' },
+                   { id: 'personalizado', label: '⭐ Personalizados Jorge' },
+                   { id: 'general', label: 'Pesas & Funcional' }
+                 ].map(cat => (
+                   <button 
+                     key={cat.id} 
+                     onClick={() => setCategoryFilter(cat.id as any)}
+                     className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap transition-all ${categoryFilter === cat.id ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                   >
+                     {cat.label}
+                   </button>
+                 ))}
+              </div>
             </div>
 
             <div className="space-y-3">
                {templates
                  .filter(tpl => {
+                   const q = tplSearch.trim().toLowerCase();
+                   if (q && !tpl.name.toLowerCase().includes(q) && !(tpl.publicTitle || '').toLowerCase().includes(q)) return false;
                    if (categoryFilter === 'all') return true;
                    if (categoryFilter === 'travel') return tpl.category === 'travel' || tpl.name.toLowerCase().includes('viaje') || tpl.name.toLowerCase().includes('vacaciones');
                    if (categoryFilter === 'personalizado') return tpl.category === 'personalizado' || tpl.name.toLowerCase().includes('personalizado');
@@ -510,8 +524,21 @@ export const WorkoutManager: React.FC = () => {
                            <button type="button" onClick={() => setSelectedAthleteIds([])} className="text-[9px] font-black text-white/50 uppercase tracking-wider bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-all">Ninguno</button>
                        </div>
                    </div>
+                   <input
+                     type="text"
+                     value={athleteSearch}
+                     onChange={e => setAthleteSearch(e.target.value)}
+                     placeholder="🔍 Buscar atleta por nombre o @usuario..."
+                     className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-xs font-bold text-white placeholder-white/30 outline-none"
+                   />
                    <div className="bg-black border border-white/10 rounded-3xl p-4 max-h-52 overflow-y-auto custom-scrollbar space-y-2">
-                       {athletes.map(a => {
+                       {athletes
+                         .filter(a => {
+                           const q = athleteSearch.trim().toLowerCase();
+                           if (!q) return true;
+                           return a.name.toLowerCase().includes(q) || (a.username || '').toLowerCase().includes(q);
+                         })
+                         .map(a => {
                            const isSelected = selectedAthleteIds.includes(a.id);
                            return (
                                <div 
@@ -600,11 +627,41 @@ export const WorkoutManager: React.FC = () => {
                </div>
 
                <div className="space-y-4">
-                   <div className="flex justify-between items-center px-2">
+                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2">
                        <h2 className="text-xs font-black uppercase tracking-[0.3em] text-white/50">Bloques ({editingTemplate.exercises?.length || 0})</h2>
-                       <button type="button" onClick={addBlock} className="bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all min-h-[44px]">
-                           + Añadir Ejercicio
-                       </button>
+                       <div className="flex flex-wrap items-center gap-2">
+                           <input
+                             type="text"
+                             value={editorExSearch}
+                             onChange={e => setEditorExSearch(e.target.value)}
+                             placeholder="🔍 Buscar y añadir ejercicio..."
+                             className="bg-black border border-white/15 focus:border-cyan-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white placeholder-white/30 outline-none min-w-[200px]"
+                           />
+                           <select
+                             className="bg-black border border-white/15 rounded-xl px-3 py-2.5 text-xs font-bold text-cyan-300 outline-none max-w-[220px]"
+                             onChange={e => {
+                               if (!e.target.value) return;
+                               addBlock(e.target.value);
+                               e.target.value = '';
+                             }}
+                           >
+                             <option value="">+ Elegir ejercicio...</option>
+                             {storageService.getExercises()
+                               .filter(ex => {
+                                 const q = editorExSearch.trim().toLowerCase();
+                                 if (!q) return true;
+                                 return ex.name.toLowerCase().includes(q) || ex.muscleGroup.toLowerCase().includes(q);
+                               })
+                               .map(ex => (
+                                 <option key={ex.id} value={ex.id}>
+                                   {ex.muscleGroup}: {ex.name}
+                                 </option>
+                               ))}
+                           </select>
+                           <button type="button" onClick={() => addBlock()} className="bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all min-h-[44px]">
+                               + Bloque Rápido
+                           </button>
+                       </div>
                    </div>
 
                    <div className="space-y-4">
@@ -639,7 +696,7 @@ export const WorkoutManager: React.FC = () => {
                    {(!editingTemplate.exercises || editingTemplate.exercises.length === 0) && (
                        <div className="text-center py-14 border border-dashed border-white/10 rounded-[32px]">
                            <p className="text-xs font-black uppercase text-white/30 tracking-widest">No hay ejercicios en esta rutina.</p>
-                           <button type="button" onClick={addBlock} className="mt-4 bg-white/10 hover:bg-white hover:text-black text-white px-6 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                           <button type="button" onClick={() => addBlock()} className="mt-4 bg-white/10 hover:bg-white hover:text-black text-white px-6 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
                                + Añadir Primer Ejercicio
                            </button>
                        </div>

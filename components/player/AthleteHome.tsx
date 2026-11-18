@@ -412,7 +412,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                  </section>
 
                  {/* BLOQUE PRINCIPAL: ESTO HARÁS HOY */}
-                 {!user.isActive ? (
+                 {user.isActive === false ? (
                     <div className="bg-[#0F0F11] border border-red-600/30 rounded-3xl p-8 text-center space-y-4">
                         <h3 className="text-2xl font-black uppercase italic text-red-500">Membresía Inactiva</h3>
                         <p className="text-xs text-white/60 max-w-md mx-auto">Tu acceso se encuentra pausado. Comunícate con Kinetix Functional Zone para reactivar tu plan.</p>
@@ -552,7 +552,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                  )}
 
                  {/* NOTA DEL COACH SINCRONIZADA (LECTURA 0-TOKENS PARA ATLETA) */}
-                 {user.isActive && (() => {
+                 {user.isActive !== false && (() => {
                    const coachNote = user.coachNote?.trim() || currentWorkout?.exercises?.find(ex => ex.coachCue?.trim())?.coachCue?.trim();
                    if (!coachNote) return null;
                    return (
@@ -567,7 +567,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                  })()}
 
                  {/* SOPORTE DIRECTO CON COACH (SIN CONSUMO DE TOKENS IA) */}
-                 {user.isActive && (
+                 {user.isActive !== false && (
                      <a
                        href={coachWhatsApp}
                        target="_blank"

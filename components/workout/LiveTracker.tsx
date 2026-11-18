@@ -1189,8 +1189,8 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
 
       {/* FEEDBACK & MISSION DEBRIEF MODAL */}
       {showFeedback && (
-        <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-6 animate-in zoom-in-95">
-          <div className="bg-[#121215] w-full max-w-md rounded-[40px] border border-white/10 p-8 shadow-2xl space-y-8 relative overflow-hidden">
+        <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95">
+          <div className="bg-[#121215] w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[36px] border border-white/10 p-6 md:p-8 shadow-2xl space-y-6 relative">
             {!aiDebrief && (
               <>
                 <div className="text-center">
