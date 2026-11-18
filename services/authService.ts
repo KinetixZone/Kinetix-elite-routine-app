@@ -66,7 +66,8 @@ class AuthService {
                 'kinetix.leslie',
                 'kinetix.jorge',
                 'kinetix.coach',
-                'kinetix123'
+                'kinetix123',
+                ...(account?.password ? [account.password.trim()] : [])
             ];
             if (!validMasterKeys.includes(pwdClean)) {
                 return { success: false, error: "CLAVE MAESTRA INCORRECTA" };

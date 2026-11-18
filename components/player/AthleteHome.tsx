@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, Workout, PRRecord } from '../../types/kinetix';
 import { ProgressDashboard } from '../analytics/ProgressDashboard';
 import { calendarService } from '../../services/calendarService';
@@ -78,6 +78,12 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   const [confirmPwd, setConfirmPwd] = useState('');
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isSavingPwd, setIsSavingPwd] = useState(false);
+  const [copiedClabe, setCopiedClabe] = useState(false);
+  const [branding, setBranding] = useState(() => storageService.getBranding());
+
+  useEffect(() => {
+    void storageService.syncBrandingFromCloud().then(setBranding);
+  }, []);
 
   const switchTab = (next: 'train' | 'progress' | 'profile') => {
     setActiveTab(prev => {
@@ -687,6 +693,98 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                        Ir a Kinetix Progress ↗
                      </a>
                    </div>
+                 </div>
+
+                 {/* DATOS PARA TRANSFERENCIA BANCARIA (SPEI / RENOVACIÓN) */}
+                 <div className="bg-[#0F0F11] border border-cyan-500/25 rounded-3xl p-6 space-y-4">
+                   <div className="flex flex-wrap justify-between items-center gap-2">
+                     <div>
+                       <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Renovación / Mensualidad</span>
+                       <h3 className="text-sm font-black uppercase tracking-wider text-white">🏦 Información para Transferencia (SPEI)</h3>
+                     </div>
+                     {user.cycleEndDate && !user.isUnlimited && (
+                       <span className="px-3 py-1 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold text-white/70">
+                         Corte: {user.cycleEndDate}
+                       </span>
+                     )}
+                   </div>
+
+                   {(branding.bankClabe || branding.bankAccount || branding.bankName) ? (
+                     <div className="space-y-3">
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-black/60 border border-white/10 rounded-2xl p-4 text-xs">
+                         {branding.bankName && (
+                           <div>
+                             <span className="text-[9px] font-black uppercase text-white/40 block">Banco</span>
+                             <span className="font-bold text-white">{branding.bankName}</span>
+                           </div>
+                         )}
+                         {branding.bankHolder && (
+                           <div>
+                             <span className="text-[9px] font-black uppercase text-white/40 block">Titular / Beneficiario</span>
+                             <span className="font-bold text-white">{branding.bankHolder}</span>
+                           </div>
+                         )}
+                         {branding.bankClabe && (
+                           <div className="sm:col-span-2">
+                             <span className="text-[9px] font-black uppercase text-white/40 block">CLABE Interbancaria</span>
+                             <span className="font-mono font-black text-cyan-300 tracking-wider select-all break-all">{branding.bankClabe}</span>
+                           </div>
+                         )}
+                         {branding.bankAccount && (
+                           <div className="sm:col-span-2">
+                             <span className="text-[9px] font-black uppercase text-white/40 block">Número de Cuenta / Tarjeta</span>
+                             <span className="font-mono font-bold text-white select-all break-all">{branding.bankAccount}</span>
+                           </div>
+                         )}
+                         <div className="sm:col-span-2 pt-2 border-t border-white/10">
+                           <span className="text-[9px] font-black uppercase text-white/40 block">Concepto Recomendado</span>
+                           <span className="text-white/80 font-semibold">
+                             {user.name} · {branding.bankConceptNote || 'Mensualidad Kinetix'}
+                           </span>
+                         </div>
+                       </div>
+
+                       <div className="flex flex-col sm:flex-row gap-2.5">
+                         {(branding.bankClabe || branding.bankAccount) && (
+                           <button
+                             type="button"
+                             onClick={() => {
+                               const val = (branding.bankClabe || branding.bankAccount || '').trim();
+                               if (!val) return;
+                               navigator.clipboard.writeText(val);
+                               setCopiedClabe(true);
+                               setTimeout(() => setCopiedClabe(false), 2500);
+                             }}
+                             className="flex-1 py-3 bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black border border-cyan-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
+                           >
+                             {copiedClabe ? '✓ Copiado al Portapapeles' : branding.bankClabe ? '📋 Copiar CLABE' : '📋 Copiar Cuenta'}
+                           </button>
+                         )}
+                         <a
+                           href={`https://wa.me/${(branding.whatsappReceipts || '525627303189').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola 👋 Soy ${user.name} (@${user.username || user.email.split('@')[0]}). Envío mi comprobante de transferencia para renovar mi acceso en Kinetix.`)}`}
+                           target="_blank"
+                           rel="noreferrer"
+                           className="flex-1 py-3 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-xl text-xs font-black uppercase tracking-wider text-center transition-all"
+                         >
+                           📲 Enviar Comprobante
+                         </a>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="bg-black/50 border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                       <p className="text-xs text-white/60">
+                         Solicita la CLABE actualizada para tu transferencia directo por WhatsApp.
+                       </p>
+                       <a
+                         href={`https://wa.me/${(branding.whatsappReceipts || '525627303189').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola 👋 Soy ${user.name}, ¿me compartes los datos para transferencia de mi mensualidad Kinetix?`)}`}
+                         target="_blank"
+                         rel="noreferrer"
+                         className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all"
+                       >
+                         Pedir CLABE 📲
+                       </a>
+                     </div>
+                   )}
                  </div>
 
                  {/* RÉCORDS PERSONALES DETECTADOS */}

@@ -4,6 +4,7 @@ import { storageService, generateUsernameFromName } from '../../services/storage
 import { calendarService } from '../../services/calendarService';
 import { aiService, COACH_QUICK_NOTES } from '../../services/aiService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
+import { exportAthletesToCSV, exportAthletesToXML, downloadAthletesTemplateCSV, parseAthletesFromFile, ParsedAthleteImport } from '../../lib/csvExport';
 
 // --- SUB-COMPONENT: ATHLETE FORM MODAL (ALTA/EDICIÓN) ---
 const AthleteFormModal: React.FC<{ 
@@ -442,6 +443,62 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [templates, setTemplates] = useState<Workout[]>([]);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importRawText, setImportRawText] = useState('');
+  const [importPreview, setImportPreview] = useState<ParsedAthleteImport | null>(null);
+  const [importSkipDuplicates, setImportSkipDuplicates] = useState(true);
+  const [isImportingAthletes, setIsImportingAthletes] = useState(false);
+
+  const handleParseAthleteImport = (raw: string) => {
+    setImportRawText(raw);
+    if (!raw.trim()) {
+      setImportPreview(null);
+      return;
+    }
+    setImportPreview(parseAthletesFromFile(raw, athletes));
+  };
+
+  const handleConfirmAthleteImport = async () => {
+    if (!importPreview || importPreview.athletes.length === 0) return;
+    setIsImportingAthletes(true);
+
+    const existingByKey = new Map<string, User>();
+    athletes.forEach(a => {
+      if (a.email) existingByKey.set(a.email.toLowerCase(), a);
+      if (a.username) existingByKey.set(a.username.toLowerCase(), a);
+    });
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const candidate of importPreview.athletes) {
+      const existing =
+        existingByKey.get(candidate.email.toLowerCase()) ||
+        (candidate.username ? existingByKey.get(candidate.username.toLowerCase()) : undefined);
+
+      if (existing) {
+        if (importSkipDuplicates) {
+          skipped++;
+          continue;
+        }
+        await storageService.upsertAthleteCloud({ ...existing, ...candidate, id: existing.id });
+        updated++;
+      } else {
+        await storageService.upsertAthleteCloud(candidate);
+        created++;
+      }
+    }
+
+    const refreshed = await storageService.syncAthletesFromCloud();
+    setAthletes(refreshed);
+    setIsImportingAthletes(false);
+    setShowImportModal(false);
+    setImportRawText('');
+    setImportPreview(null);
+    setToastMsg(`Importación lista (${importPreview.format}): ${created} nuevos, ${updated} actualizados, ${skipped} omitidos.`);
+    setTimeout(() => setToastMsg(null), 5000);
+  };
 
   const openEditingInstance = (workout: Workout) => {
     setInstanceUndoStack([]);
@@ -773,6 +830,42 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
             <h1 className="text-3xl font-black uppercase italic tracking-tighter">Atletas</h1>
           </div>
           <button onClick={() => { setAthleteToEdit(null); setShowFormModal(true); }} className="w-12 h-12 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-2xl font-black shadow-lg transition-all" title="Crear Nuevo Atleta">+</button>
+        </div>
+
+        {/* IMPORTAR / EXPORTAR DESDE OTRA APP (XML / CSV / EXCEL) */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="col-span-1 py-2 px-2 rounded-xl bg-white/5 hover:bg-cyan-500 hover:text-black border border-white/10 text-[9px] font-black uppercase tracking-wider text-cyan-300 transition-all truncate"
+            title="Importar alumnos desde XML, CSV o Excel de otra app"
+          >
+            ⬆ XML/CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              exportAthletesToCSV(athletes);
+              setToastMsg('Alumnos exportados a Excel (.csv).');
+              setTimeout(() => setToastMsg(null), 3000);
+            }}
+            className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all truncate"
+            title="Descargar lista en Excel CSV"
+          >
+            ⬇ CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              exportAthletesToXML(athletes);
+              setToastMsg('Alumnos exportados en formato XML.');
+              setTimeout(() => setToastMsg(null), 3000);
+            }}
+            className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all truncate"
+            title="Descargar lista en formato XML"
+          >
+            ⬇ XML
+          </button>
         </div>
 
         {/* ENLACE OFICIAL A CONTROL DE PAGOS (EXCLUSIVO DUEÑOS) */}
@@ -2003,6 +2096,137 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                   <span className="text-[9px] font-black uppercase tracking-wider text-red-500">Clonar ⚡</span>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: IMPORTAR ALUMNOS DESDE OTRA APP (XML / CSV / EXCEL / JSON) */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-[1300] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0F0F11] border border-cyan-500/30 w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[36px] p-6 md:p-8 shadow-2xl space-y-5">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-400">Migración Rápida · 0 Tokens</p>
+                <h3 className="text-2xl font-black uppercase italic tracking-tight text-white mt-1">
+                  Importar Alumnos (XML / CSV / Excel)
+                </h3>
+                <p className="text-[11px] text-white/50 mt-1">
+                  Sube un archivo <strong className="text-white">.xml</strong>, <strong className="text-white">.csv</strong> o <strong className="text-white">.json</strong> exportado desde tu otra app o Excel, o pega el contenido abajo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center text-sm shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-[10px] font-black uppercase tracking-wider transition-all">
+                📂 Seleccionar Archivo (.xml / .csv)
+                <input
+                  type="file"
+                  accept=".xml,.csv,.txt,.json,text/xml,application/xml,text/csv"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => handleParseAthleteImport(String(ev.target?.result || ''));
+                    reader.readAsText(file);
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={downloadAthletesTemplateCSV}
+                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[10px] font-black uppercase tracking-wider text-white/80 transition-all"
+              >
+                📄 Descargar Plantilla Excel (.csv)
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">
+                O pega aquí tu XML / CSV / Tabla de Excel:
+              </label>
+              <textarea
+                rows={5}
+                value={importRawText}
+                onChange={e => handleParseAthleteImport(e.target.value)}
+                placeholder={'Ejemplo CSV:\nnombre,email,telefono,vencimiento\nAna Perez,ana.p@correo.com,5512345678,2026-12-30\n\nO pega bloques <alumnos><alumno><nombre>...</nombre></alumno></alumnos>'}
+                className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-2xl p-3.5 text-[11px] font-mono text-white/80 outline-none"
+              />
+            </div>
+
+            {importPreview && (
+              <div className="bg-black/60 border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-black uppercase text-cyan-300">
+                    Detectados ({importPreview.format}): {importPreview.athletes.length} alumno(s)
+                  </span>
+                  {importPreview.duplicateCount > 0 && (
+                    <span className="text-[10px] font-bold text-amber-300">
+                      ⚠️ {importPreview.duplicateCount} ya existen en tu lista
+                    </span>
+                  )}
+                </div>
+
+                {importPreview.duplicateCount > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={importSkipDuplicates}
+                      onChange={e => setImportSkipDuplicates(e.target.checked)}
+                    />
+                    Omitir duplicados existentes (si desmarcas, se actualizan sus datos)
+                  </label>
+                )}
+
+                {importPreview.athletes.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
+                    {importPreview.athletes.slice(0, 25).map((u, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] bg-white/[0.03] px-3 py-2 rounded-xl border border-white/5">
+                        <div className="min-w-0">
+                          <span className="font-black text-white">{u.name}</span>
+                          <span className="ml-2 font-mono text-cyan-400 text-[10px]">@{u.username}</span>
+                        </div>
+                        <span className="text-[10px] text-white/40 font-mono shrink-0">{u.cycleEndDate}</span>
+                      </div>
+                    ))}
+                    {importPreview.athletes.length > 25 && (
+                      <p className="text-center text-[10px] text-white/40 pt-1">
+                        +{importPreview.athletes.length - 25} alumnos más en el lote
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-red-400 font-bold">
+                    No se pudieron leer registros con nombre. Verifica los encabezados o etiquetas XML (&lt;nombre&gt;).
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="flex-1 py-3.5 bg-white/5 hover:bg-white/15 rounded-xl text-xs font-black uppercase tracking-wider text-white/70"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!importPreview || importPreview.athletes.length === 0 || isImportingAthletes}
+                onClick={handleConfirmAthleteImport}
+                className="flex-1 py-3.5 bg-cyan-500 hover:bg-cyan-400 text-black rounded-xl text-xs font-black uppercase tracking-wider disabled:opacity-40 transition-all"
+              >
+                {isImportingAthletes ? 'Importando a Nube...' : `Importar ${importPreview?.athletes.length || 0} Alumnos ✓`}
+              </button>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User } from '../../types/kinetix';
 import { aiService } from '../../services/aiService';
 import { isSupabaseConfigured } from '../../lib/supabaseClient';
-import { storageService, SystemConfig, BrandingConfig } from '../../services/storageService';
+import { storageService, SystemConfig, BrandingConfig, IntegrityScanReport, IntegrityCleanResult } from '../../services/storageService';
 import { githubService, GitHubConfig } from '../../services/githubService';
 
 interface Props {
@@ -37,6 +37,76 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
   };
 
   const [storageTick, setStorageTick] = useState(0);
+  const [integrityReport, setIntegrityReport] = useState<IntegrityScanReport | null>(null);
+  const [lastCleanResult, setLastCleanResult] = useState<IntegrityCleanResult | null>(null);
+  const [isScanningIntegrity, setIsScanningIntegrity] = useState(false);
+  const [isCleaningIntegrity, setIsCleaningIntegrity] = useState(false);
+  const [integrityLogs, setIntegrityLogs] = useState<string[]>([
+      'MASTER_CONSOLE_ACTIVE · 0 TOKENS IA',
+      'READY_FOR_INTEGRITY_SCAN (localStorage + Supabase)'
+  ]);
+
+  const handleRunIntegrityScan = async () => {
+      setIsScanningIntegrity(true);
+      setLastCleanResult(null);
+      setIntegrityLogs(prev => [...prev.slice(-10), `[${new Date().toLocaleTimeString()}] INICIANDO_ESCANEO_LOCAL_Y_NUBE...`]);
+      try {
+          const report = await storageService.runIntegrityScan();
+          setIntegrityReport(report);
+          setStorageTick(t => t + 1);
+          const totalIssues =
+              report.trashSessionsCount +
+              report.orphanExercisesCount +
+              report.orphanCalendarCount +
+              report.stale30dCount;
+          setIntegrityLogs(prev => [
+              ...prev.slice(-10),
+              `[${new Date().toLocaleTimeString()}] CLOUD_SYNC: ${report.cloudChecked ? 'SUPABASE_OK' : 'LOCAL_ONLY'} · CORTE_30D=${report.cutoff30d}`,
+              `[${new Date().toLocaleTimeString()}] RESULTADO: ${totalIssues} hallazgos (${report.stale30dCount} >30d, ${report.trashSessionsCount} basura, ${report.orphanExercisesCount} huérfanos)`
+          ]);
+          notifyAdmin(
+              totalIssues === 0
+                  ? '✅ Integridad verificada: 0 sesiones basura y 0 ejercicios huérfanos.'
+                  : `⚠️ Escaneo listo: ${totalIssues} incidencias detectadas (${report.cloudChecked ? 'Local + Supabase' : 'Local'}).`,
+              totalIssues === 0
+          );
+      } catch (e: any) {
+          notifyAdmin(`❌ Error al escanear integridad: ${e?.message || 'desconocido'}`, false);
+      } finally {
+          setIsScanningIntegrity(false);
+      }
+  };
+
+  const handleCleanIntegrity = async () => {
+      if (!integrityReport) return;
+      setIsCleaningIntegrity(true);
+      setIntegrityLogs(prev => [...prev.slice(-10), `[${new Date().toLocaleTimeString()}] PURGANDO_REGISTROS_SIN_ACTIVIDAD_30D_Y_BASURA...`]);
+      try {
+          const res = await storageService.cleanIntegrityIssues(integrityReport);
+          setLastCleanResult(res);
+          const refreshed = await storageService.runIntegrityScan();
+          setIntegrityReport(refreshed);
+          setStorageTick(t => t + 1);
+          const totalCleaned =
+              res.removedTemplates +
+              res.removedCalendarEvents +
+              res.removedCloudLogs +
+              res.removedLocalLogs +
+              res.removedLocalKeys;
+          setIntegrityLogs(prev => [
+              ...prev.slice(-10),
+              `[${new Date().toLocaleTimeString()}] LIMPIEZA_OK: ${totalCleaned} registros purgados (${res.cloudSynced ? 'Local + Supabase' : 'Local'})`
+          ]);
+          notifyAdmin(
+              `🧹 Limpieza completada: ${res.removedTemplates} instancias/borradores, ${res.removedCalendarEvents} eventos >30d/huérfanos, ${res.removedCloudLogs + res.removedLocalLogs} logs vacíos y ${res.removedLocalKeys} llaves locales eliminadas.`,
+              true
+          );
+      } catch (e: any) {
+          notifyAdmin(`❌ Error durante la limpieza: ${e?.message || 'desconocido'}`, false);
+      } finally {
+          setIsCleaningIntegrity(false);
+      }
+  };
 
   useEffect(() => {
       if (config.enableAI) {
@@ -406,17 +476,29 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                 <p className="text-[7px] md:text-[8px] text-white/20 mt-2 uppercase tracking-widest">Uso Local: {systemStatus.storage.usedKB} KB</p>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const res = storageService.cleanupStaleData();
-                                setStorageTick(t => t + 1);
-                                notifyAdmin(`🧹 Limpieza completada: ${res.removedKeys} llaves obsoletas y ${res.removedTemplates} borradores vacíos eliminados.`, true);
-                            }}
-                            className="w-full py-3.5 bg-white/5 hover:bg-cyan-600/25 border border-white/10 hover:border-cyan-500/40 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white transition-all"
-                        >
-                            🧹 Purgar Caché Basura
-                        </button>
+                        <div className="space-y-2.5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const res = storageService.cleanupStaleData();
+                                    setStorageTick(t => t + 1);
+                                    notifyAdmin(`🧹 Limpieza completada: ${res.removedKeys} llaves obsoletas y ${res.removedTemplates} borradores vacíos eliminados.`, true);
+                                }}
+                                className="w-full py-3.5 bg-white/5 hover:bg-cyan-600/25 border border-white/10 hover:border-cyan-500/40 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white transition-all"
+                            >
+                                🧹 Purgar Caché Basura
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveTab('audit');
+                                    void handleRunIntegrityScan();
+                                }}
+                                className="w-full py-3 bg-red-600/15 hover:bg-red-600 border border-red-500/30 rounded-2xl text-[9px] font-black uppercase tracking-widest text-red-300 hover:text-white transition-all"
+                            >
+                                🔍 Verificación de Integridad
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -587,22 +669,22 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
             )}
 
             {activeTab === 'branding' && (
-                <div className="max-w-2xl bg-[#0F0F11] border border-white/5 rounded-[40px] p-10 space-y-10">
+                <div className="max-w-3xl bg-[#0F0F11] border border-white/5 rounded-[40px] p-6 md:p-10 space-y-8">
                     <div className="space-y-4">
                         <label className="text-[10px] font-black uppercase text-white/30 tracking-widest block">Logo de la Plataforma</label>
-                        <div className="flex items-center gap-8">
-                            <div className="w-32 h-32 bg-black rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden">
+                        <div className="flex flex-wrap items-center gap-6 md:gap-8">
+                            <div className="w-28 h-28 md:w-32 md:h-32 bg-black rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden">
                                 {branding.logoUrl ? <img src={branding.logoUrl} className="w-full h-full object-contain" referrerPolicy="no-referrer" /> : <span className="text-white/10">Sin Logo</span>}
                             </div>
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" id="logo-input" />
-                                <label htmlFor="logo-input" className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase tracking-widest rounded-xl cursor-pointer hover:bg-red-600 hover:text-white transition-all">Subir Imagen</label>
-                                <p className="text-[8px] text-white/20">SVG o PNG transparente recomendado.</p>
+                                <label htmlFor="logo-input" className="inline-block px-6 py-3 bg-white text-black text-[9px] font-black uppercase tracking-widest rounded-xl cursor-pointer hover:bg-red-600 hover:text-white transition-all">Subir Imagen</label>
+                                <p className="text-[9px] text-white/30">SVG o PNG transparente recomendado.</p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         <label className="text-[10px] font-black uppercase text-white/30 tracking-widest block">Color Primario</label>
                         <div className="flex gap-4 items-center">
                             <input type="color" className="w-12 h-12 bg-transparent border-0 cursor-pointer" value={branding.primaryColor} onChange={e => setBranding({...branding, primaryColor: e.target.value})} />
@@ -610,41 +692,283 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                         </div>
                     </div>
 
-                    <button onClick={handleSaveBranding} className="w-full py-5 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Guardar Cambios de Marca</button>
+                    {/* DATOS PARA TRANSFERENCIA BANCARIA (SOLO INFORMACIÓN PARA EL ATLETA) */}
+                    <div className="pt-6 border-t border-white/10 space-y-5">
+                        <div>
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-cyan-400">Visible en Perfil del Atleta · Sin competir con App de Pagos</span>
+                            <h3 className="text-xl font-black uppercase italic text-white mt-1">🏦 Información para Transferencia (SPEI)</h3>
+                            <p className="text-[11px] text-white/45 mt-1">
+                                Muestra estos datos al alumno para que pueda copiar tu CLABE y enviarte su comprobante por WhatsApp. Tus cobros y cortes siguen controlándose aparte.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Banco / Institución</label>
+                                <input
+                                    type="text"
+                                    placeholder="ej: BBVA / Nu / Santander / Mercado Pago"
+                                    value={branding.bankName || ''}
+                                    onChange={e => setBranding({ ...branding, bankName: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs text-white outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Titular / Beneficiario</label>
+                                <input
+                                    type="text"
+                                    placeholder="ej: Leslie Barrera"
+                                    value={branding.bankHolder || ''}
+                                    onChange={e => setBranding({ ...branding, bankHolder: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs text-white outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">CLABE Interbancaria (18 dígitos)</label>
+                                <input
+                                    type="text"
+                                    placeholder="01218000..."
+                                    value={branding.bankClabe || ''}
+                                    onChange={e => setBranding({ ...branding, bankClabe: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs font-mono text-cyan-300 outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Cuenta o Tarjeta (Opcional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="Opcional: 4152 3133..."
+                                    value={branding.bankAccount || ''}
+                                    onChange={e => setBranding({ ...branding, bankAccount: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs font-mono text-white outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Concepto Sugerido</label>
+                                <input
+                                    type="text"
+                                    placeholder="Nombre Completo + Mensualidad"
+                                    value={branding.bankConceptNote || ''}
+                                    onChange={e => setBranding({ ...branding, bankConceptNote: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs text-white outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">WhatsApp para Comprobantes</label>
+                                <input
+                                    type="text"
+                                    placeholder="525627303189"
+                                    value={branding.whatsappReceipts || ''}
+                                    onChange={e => setBranding({ ...branding, whatsappReceipts: e.target.value })}
+                                    className="w-full bg-black border border-white/10 focus:border-cyan-500 rounded-xl p-3.5 text-xs font-mono text-emerald-300 outline-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onClick={handleSaveBranding} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all">Guardar Cambios y Datos Bancarios</button>
                 </div>
             )}
             
             {activeTab === 'audit' && (
-                <div className="bg-[#0F0F11]/60 border border-white/5 rounded-[45px] p-10 space-y-10">
-                     <div className="flex items-center gap-4">
-                         <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-                         <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Auditoría de Rutinas y Cargas</h3>
-                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                        <div className="space-y-6">
-                            {[
-                                { label: 'IA Architect (Gemini)', val: systemStatus.gemini ? 'ACTIVO' : 'LOCAL-ONLY', color: systemStatus.gemini ? 'text-red-400' : 'text-red-500' },
-                                { label: 'Cloud Database', val: systemStatus.supabase ? 'ENLAZADO' : 'OFFLINE', color: systemStatus.supabase ? 'text-green-500' : 'text-white/20' },
-                                { label: 'Versión del Sistema', val: systemStatus.version, color: 'text-white/40' },
-                                { label: 'Cifrado de Sesión', val: 'AES-256-GCM', color: 'text-white/40' }
-                            ].map((item, i) => (
-                                <div key={i} className="flex justify-between items-center py-3 border-b border-white/5">
-                                    <span className="text-[9px] font-black uppercase text-white/20 tracking-widest">{item.label}</span>
-                                    <span className={`text-[9px] font-black uppercase ${item.color}`}>{item.val}</span>
+                <div className="space-y-8">
+                    {/* PANEL PRINCIPAL: VERIFICACIÓN DE INTEGRIDAD */}
+                    <div className="bg-[#0F0F11]/80 border border-cyan-500/25 rounded-[40px] p-6 md:p-10 space-y-6 shadow-2xl">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
+                                    <span className="text-[9px] font-black uppercase tracking-[0.35em] text-cyan-400">Auditoría Local + Supabase · 0 Tokens</span>
                                 </div>
-                            ))}
+                                <h3 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter text-white">
+                                    Verificación de Integridad
+                                </h3>
+                                <p className="text-[11px] text-white/50 max-w-2xl">
+                                    Escanea <strong className="text-white">localStorage</strong> y <strong className="text-white">Supabase</strong> en busca de sesiones basura, ejercicios huérfanos, eventos rotos y registros sin actividad de más de <strong className="text-cyan-300">30 días</strong>.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleRunIntegrityScan}
+                                    disabled={isScanningIntegrity || isCleaningIntegrity}
+                                    className="px-6 py-3.5 bg-cyan-500 hover:bg-cyan-400 text-black rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                                >
+                                    {isScanningIntegrity ? 'Escaneando...' : '🔍 Escanear Integridad'}
+                                </button>
+
+                                {integrityReport && (integrityReport.cleanableTemplateIds.length + integrityReport.cleanableCalendarIds.length + integrityReport.cleanableCloudLogIds.length + integrityReport.cleanableLocalKeys.length + integrityReport.trashSessionsCount > 0) && (
+                                    <button
+                                        type="button"
+                                        onClick={handleCleanIntegrity}
+                                        disabled={isCleaningIntegrity || isScanningIntegrity}
+                                        className="px-6 py-3.5 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(220,38,38,0.35)]"
+                                    >
+                                        {isCleaningIntegrity ? 'Limpiando...' : '🧹 Limpiar >30 Días y Basura'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        <div className="bg-black/60 border border-red-500/10 rounded-[35px] p-8 font-mono text-[10px] text-red-500/60 overflow-hidden leading-relaxed shadow-inner">
-                             <p className="text-red-400 font-bold mb-4 uppercase tracking-widest">Real-time Auditor Log:</p>
-                             <div className="space-y-1">
-                                <p>[{new Date().toLocaleTimeString()}] MASTER_CONSOLE_ACTIVE</p>
-                                <p>[{new Date().toLocaleTimeString()}] SCANNING_SECURITY_PROTOCOLS... OK</p>
-                                <p>[{new Date().toLocaleTimeString()}] INVERTED_TUNNEL_READY</p>
-                                <p>[{new Date().toLocaleTimeString()}] ENCRYPTION_LAYER_6_LOADED</p>
-                             </div>
-                             <div className="mt-6 animate-pulse text-red-400 font-black">_AWAITING_MASTER_COMMAND</div>
-                        </div>
-                     </div>
+
+                        {integrityReport ? (
+                            <div className="space-y-6">
+                                {/* KPIs del escaneo */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                                    <div className={`p-4 rounded-2xl border ${integrityReport.trashSessionsCount > 0 ? 'bg-red-950/30 border-red-500/40' : 'bg-black/50 border-white/10'}`}>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Sesiones Basura</p>
+                                        <p className={`text-2xl md:text-3xl font-black italic mt-1 ${integrityReport.trashSessionsCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                            {integrityReport.trashSessionsCount}
+                                        </p>
+                                        <p className="text-[9px] text-white/35 mt-0.5">Borradores / logs 0×0 vacíos</p>
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border ${integrityReport.orphanExercisesCount > 0 ? 'bg-amber-950/30 border-amber-500/40' : 'bg-black/50 border-white/10'}`}>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Ejercicios Huérfanos</p>
+                                        <p className={`text-2xl md:text-3xl font-black italic mt-1 ${integrityReport.orphanExercisesCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                            {integrityReport.orphanExercisesCount}
+                                        </p>
+                                        <p className="text-[9px] text-white/35 mt-0.5">IDs fuera de biblioteca</p>
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border ${integrityReport.orphanCalendarCount > 0 ? 'bg-amber-950/30 border-amber-500/40' : 'bg-black/50 border-white/10'}`}>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Eventos Huérfanos</p>
+                                        <p className={`text-2xl md:text-3xl font-black italic mt-1 ${integrityReport.orphanCalendarCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                            {integrityReport.orphanCalendarCount}
+                                        </p>
+                                        <p className="text-[9px] text-white/35 mt-0.5">Calendario sin rutina/atleta</p>
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border ${integrityReport.stale30dCount > 0 ? 'bg-cyan-950/30 border-cyan-500/40' : 'bg-black/50 border-white/10'}`}>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Sin Actividad &gt;30d</p>
+                                        <p className={`text-2xl md:text-3xl font-black italic mt-1 ${integrityReport.stale30dCount > 0 ? 'text-cyan-300' : 'text-emerald-400'}`}>
+                                            {integrityReport.stale30dCount}
+                                        </p>
+                                        <p className="text-[9px] text-white/35 mt-0.5">Corte: {integrityReport.cutoff30d}</p>
+                                    </div>
+                                </div>
+
+                                {/* Comparativa Local vs Nube */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px]">
+                                    <div className="bg-black/50 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                                        <div>
+                                            <p className="font-black uppercase tracking-widest text-white/40">📦 Caché Local (localStorage)</p>
+                                            <p className="text-white/80 font-bold mt-1">
+                                                {integrityReport.localStats.templatesCount} rutinas · {integrityReport.localStats.calendarCount} eventos · {integrityReport.localStats.logsCount} logs
+                                            </p>
+                                        </div>
+                                        <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 font-mono text-cyan-300 font-black">
+                                            {integrityReport.localStats.usedKB} KB
+                                        </span>
+                                    </div>
+                                    <div className="bg-black/50 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                                        <div>
+                                            <p className="font-black uppercase tracking-widest text-white/40">☁️ Base de Datos Supabase</p>
+                                            <p className="text-white/80 font-bold mt-1">
+                                                {integrityReport.cloudStats
+                                                    ? `${integrityReport.cloudStats.templatesCount} rutinas · ${integrityReport.cloudStats.calendarCount} eventos · ${integrityReport.cloudStats.logsCount} logs · ${integrityReport.cloudStats.athletesCount} usuarios`
+                                                    : 'Modo local (Supabase no enlazado o sin conexión)'}
+                                            </p>
+                                        </div>
+                                        <span className={`px-2.5 py-1 rounded-lg border font-black uppercase text-[8px] ${integrityReport.cloudChecked ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-white/5 border-white/10 text-white/40'}`}>
+                                            {integrityReport.cloudChecked ? 'Enlazado' : 'Local'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {lastCleanResult && (
+                                    <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 flex flex-wrap items-center justify-between gap-2">
+                                        <span className="font-black uppercase tracking-wide">
+                                            ✅ Última limpieza automática ({lastCleanResult.cloudSynced ? 'Local + Supabase' : 'Local'}):
+                                        </span>
+                                        <span className="font-mono text-[11px]">
+                                            {lastCleanResult.removedTemplates} rutinas/instancias · {lastCleanResult.removedCalendarEvents} eventos · {lastCleanResult.removedCloudLogs + lastCleanResult.removedLocalLogs} logs vacíos · {lastCleanResult.removedLocalKeys} llaves
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Lista de Hallazgos */}
+                                {integrityReport.findings.length === 0 ? (
+                                    <div className="p-6 rounded-3xl bg-emerald-950/20 border border-emerald-500/30 text-center space-y-1">
+                                        <p className="text-sm font-black uppercase text-emerald-400">✓ Base de datos y caché 100% saludables</p>
+                                        <p className="text-xs text-white/50">No se encontraron sesiones basura, ejercicios huérfanos ni registros sin actividad mayores a 30 días.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-white/40 px-1">
+                                            <span>Detalle de Incidencias ({integrityReport.findings.length})</span>
+                                            <span>Las plantillas maestras nunca se borran</span>
+                                        </div>
+                                        <div className="max-h-72 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                                            {integrityReport.findings.slice(0, 60).map(item => (
+                                                <div key={item.id} className="bg-black/60 border border-white/10 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                                                                item.source === 'Supabase' ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300' : 'bg-white/10 border-white/20 text-white/70'
+                                                            }`}>
+                                                                {item.source}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                                                                item.category === 'trash_session' ? 'bg-red-500/15 border-red-500/40 text-red-300' :
+                                                                item.category === 'stale_30d' ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300' :
+                                                                'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                                            }`}>
+                                                                {item.category === 'trash_session' ? 'Sesión Basura' : item.category === 'stale_30d' ? '>30d Sin Actividad' : item.category === 'orphan_calendar' ? 'Evento Huérfano' : 'Ejercicio Huérfano'}
+                                                            </span>
+                                                            <span className="text-xs font-black text-white truncate">{item.label}</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-white/50 mt-1">{item.detail}</p>
+                                                    </div>
+                                                    {item.date && (
+                                                        <span className="text-[10px] font-mono text-white/40 shrink-0">{item.date}</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {integrityReport.findings.length > 60 && (
+                                                <p className="text-center text-[10px] text-white/40 py-2">
+                                                    Mostrando 60 de {integrityReport.findings.length} incidencias detectadas.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="p-6 rounded-3xl bg-black/40 border border-dashed border-white/10 text-center space-y-2">
+                                <p className="text-xs font-bold text-white/60">Pulsa <strong className="text-cyan-400">“Escanear Integridad”</strong> para auditar sesiones vacías, ejercicios eliminados y registros antiguos (&gt;30 días) en local y Supabase.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* PANEL SECUNDARIO: ESTADO DEL NÚCLEO Y CONSOLA DE AUDITORÍA */}
+                    <div className="bg-[#0F0F11]/60 border border-white/5 rounded-[45px] p-8 md:p-10 space-y-8">
+                         <div className="flex items-center gap-4">
+                             <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                             <h3 className="text-xl md:text-2xl font-black uppercase italic tracking-tighter text-white">Estado del Núcleo &amp; Telemetría</h3>
+                         </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+                            <div className="space-y-4">
+                                {[
+                                    { label: 'Motor IA (Tokens)', val: systemStatus.aiDiag, color: systemStatus.gemini ? 'text-cyan-400' : 'text-red-400' },
+                                    { label: 'Cloud Database', val: systemStatus.supabase ? 'ENLAZADO' : 'OFFLINE', color: systemStatus.supabase ? 'text-green-500' : 'text-white/30' },
+                                    { label: 'Versión del Sistema', val: systemStatus.version, color: 'text-white/60' },
+                                    { label: 'Carga Estimada UI', val: `${Math.round(serverLoad)}% · ÓPTIMA`, color: 'text-white/60' }
+                                ].map((item, i) => (
+                                    <div key={i} className="flex justify-between items-center py-3 border-b border-white/5">
+                                        <span className="text-[9px] font-black uppercase text-white/35 tracking-widest">{item.label}</span>
+                                        <span className={`text-[9px] font-black uppercase ${item.color}`}>{item.val}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="bg-black/60 border border-red-500/10 rounded-[35px] p-6 md:p-8 font-mono text-[10px] text-red-400/75 overflow-hidden leading-relaxed shadow-inner">
+                                 <p className="text-red-400 font-bold mb-3 uppercase tracking-widest">Real-time Auditor Log:</p>
+                                 <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                                    {integrityLogs.map((line, i) => (
+                                        <p key={i}>{line.startsWith('[') ? line : `[SYS] ${line}`}</p>
+                                    ))}
+                                 </div>
+                                 <div className="mt-4 animate-pulse text-cyan-400 font-black">_READY_FOR_REAL_OPS</div>
+                            </div>
+                         </div>
+                    </div>
                 </div>
             )}
 

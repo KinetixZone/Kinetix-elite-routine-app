@@ -37,6 +37,12 @@ export interface BrandingConfig {
     secondaryColor?: string;
     brandName?: string;
     payPortalUrl?: string;
+    bankName?: string;
+    bankHolder?: string;
+    bankClabe?: string;
+    bankAccount?: string;
+    bankConceptNote?: string;
+    whatsappReceipts?: string;
 }
 
 export interface MuscleStatus {
@@ -53,6 +59,52 @@ export interface AthleteInsight {
   compliance: number;
   lastRpe?: number;
   lastWorkoutDate?: string;
+}
+
+export interface IntegrityFinding {
+  id: string;
+  source: 'localStorage' | 'Supabase';
+  category: 'trash_session' | 'orphan_exercise' | 'orphan_calendar' | 'stale_30d';
+  label: string;
+  detail: string;
+  date?: string;
+}
+
+export interface IntegrityScanReport {
+  scannedAt: string;
+  cutoff30d: string;
+  cloudChecked: boolean;
+  localStats: {
+    templatesCount: number;
+    logsCount: number;
+    calendarCount: number;
+    exercisesCount: number;
+    usedKB: number;
+  };
+  cloudStats?: {
+    templatesCount: number;
+    logsCount: number;
+    calendarCount: number;
+    athletesCount: number;
+  };
+  trashSessionsCount: number;
+  orphanExercisesCount: number;
+  orphanCalendarCount: number;
+  stale30dCount: number;
+  findings: IntegrityFinding[];
+  cleanableTemplateIds: string[];
+  cleanableCalendarIds: string[];
+  cleanableCloudLogIds: string[];
+  cleanableLocalKeys: string[];
+}
+
+export interface IntegrityCleanResult {
+  removedTemplates: number;
+  removedCalendarEvents: number;
+  removedCloudLogs: number;
+  removedLocalLogs: number;
+  removedLocalKeys: number;
+  cloudSynced: boolean;
 }
 
 import { PRESET_WORKOUT_TEMPLATES } from '../constants/presetWorkouts';
@@ -143,7 +195,13 @@ class StorageService {
           primaryColor: '#FF2A2A',
           secondaryColor: '#00F0FF',
           brandName: 'KINETIX FUNCTIONAL ZONE',
-          payPortalUrl: 'https://kinetix-progress.vercel.app/'
+          payPortalUrl: 'https://kinetix-progress.vercel.app/',
+          bankName: '',
+          bankHolder: 'Leslie Barrera / Kinetix Functional Zone',
+          bankClabe: '',
+          bankAccount: '',
+          bankConceptNote: 'Nombre Completo + Mensualidad Kinetix',
+          whatsappReceipts: '525627303189'
       };
       try {
           const data = localStorage.getItem(KEYS.BRANDING);
@@ -160,6 +218,42 @@ class StorageService {
 
   saveBranding(config: BrandingConfig) {
       localStorage.setItem(KEYS.BRANDING, JSON.stringify(config));
+      if (isSupabaseConfigured) {
+        try {
+          void supabase.from('kinetix_templates').upsert({
+            id: '__kinetix_sys_branding__',
+            name: 'Kinetix Branding Config',
+            publicTitle: config.brandName || 'KINETIX FUNCTIONAL ZONE',
+            category: 'system_config',
+            day: 0,
+            exercises: [config] as any,
+            isCompleted: true,
+            scheduledDate: null,
+            isTemplate: false,
+            assignedTo: '__system__',
+            location: 'system'
+          });
+        } catch {}
+      }
+  }
+
+  async syncBrandingFromCloud(): Promise<BrandingConfig> {
+      const local = this.getBranding();
+      if (!isSupabaseConfigured) return local;
+      try {
+        const { data, error } = await supabase
+          .from('kinetix_templates')
+          .select('exercises')
+          .eq('id', '__kinetix_sys_branding__')
+          .maybeSingle();
+        if (!error && data && Array.isArray((data as any).exercises) && (data as any).exercises[0]) {
+          const cloudCfg = (data as any).exercises[0] as BrandingConfig;
+          const merged = { ...local, ...cloudCfg };
+          localStorage.setItem(KEYS.BRANDING, JSON.stringify(merged));
+          return merged;
+        }
+      } catch {}
+      return local;
   }
 
   private cachedServerDate: { date: string; fetchedAt: number } | null = null;
@@ -497,7 +591,7 @@ class StorageService {
       if (!deletedIds.has(p.id)) map.set(p.id, p);
     });
     localTemplates.forEach(t => {
-      if (deletedIds.has(t.id)) return;
+      if (t.id === '__kinetix_sys_branding__' || deletedIds.has(t.id)) return;
       const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
       if (keepInstance) map.set(t.id, t);
     });
@@ -549,10 +643,10 @@ class StorageService {
         if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
       });
       localScoped.forEach(t => {
-        if (!deletedIds.has(t.id)) mergedMap.set(t.id, t);
+        if (t.id !== '__kinetix_sys_branding__' && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
       });
       cloudTemplates.forEach(t => {
-        if (deletedIds.has(t.id)) return;
+        if (t.id === '__kinetix_sys_branding__' || deletedIds.has(t.id)) return;
         const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
         if (keepInstance) mergedMap.set(t.id, t);
       });
@@ -1369,6 +1463,405 @@ class StorageService {
     }
 
     return { removedKeys, removedTemplates };
+  }
+
+  async runIntegrityScan(): Promise<IntegrityScanReport> {
+    const todayStr = this.getServerTodayIsoSync();
+    const cutoff30d = this.formatDateInServerTz(new Date(Date.now() - 30 * 86400000));
+    const exercises = this.getExercises();
+    const exerciseIdSet = new Set([
+      ...exercises.map(e => e.id),
+      ...EXERCISES_DB.map(e => e.id)
+    ]);
+
+    const localAthletes = this.getAthletes();
+    const localTemplates: Workout[] = (() => {
+      try {
+        return JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+      } catch {
+        return [];
+      }
+    })();
+    const localCalendar: any[] = (() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(KEYS.CALENDAR) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })();
+    const localLogs = this.getAllLogs();
+
+    let cloudChecked = false;
+    let cloudTemplates: Workout[] = [];
+    let cloudCalendar: any[] = [];
+    let cloudLogs: any[] = [];
+    let cloudAthletes: any[] = [];
+
+    if (isSupabaseConfigured) {
+      try {
+        const [tplRes, calRes, logRes, athRes] = await Promise.all([
+          supabase.from('kinetix_templates').select('id, name, isTemplate, scheduledDate, assignedTo, exercises'),
+          supabase.from('kinetix_calendar').select('id, title, start_at, athlete_ids, workout_template_id'),
+          supabase.from('workout_logs').select('id, athlete_id, exercise_id, weight, reps, notes, timestamp').order('timestamp', { ascending: false }).limit(500),
+          supabase.from('athletes').select('id, name')
+        ]);
+        if (!tplRes.error && !calRes.error) {
+          cloudChecked = true;
+          cloudTemplates = Array.isArray(tplRes.data) ? (tplRes.data as Workout[]) : [];
+          cloudCalendar = Array.isArray(calRes.data) ? calRes.data : [];
+          cloudLogs = Array.isArray(logRes.data) ? logRes.data : [];
+          cloudAthletes = Array.isArray(athRes.data) ? athRes.data : [];
+        }
+      } catch (e) {
+        console.warn('Integrity scan cloud fallback:', e);
+      }
+    }
+
+    const findings: IntegrityFinding[] = [];
+    const cleanableTemplateIds = new Set<string>();
+    const cleanableCalendarIds = new Set<string>();
+    const cleanableCloudLogIds = new Set<string>();
+    const cleanableLocalKeys: string[] = [];
+
+    let trashSessionsCount = 0;
+    let orphanExercisesCount = 0;
+    let orphanCalendarCount = 0;
+    let stale30dCount = 0;
+
+    // 1. Llaves locales obsoletas en localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith('kinetix_locked_') && !key.endsWith(`_${todayStr}`)) {
+        cleanableLocalKeys.push(key);
+        trashSessionsCount++;
+        findings.push({
+          id: `ls-${key}`,
+          source: 'localStorage',
+          category: 'trash_session',
+          label: 'Bloqueo de sesión expirado',
+          detail: `Llave ${key} de un día anterior sin utilidad activa.`
+        });
+      } else if (key === KEYS.AI_PROMPT_HISTORY || key === KEYS.AI_BLUEPRINTS || key.startsWith('kinetix_coach_directive_v2_')) {
+        cleanableLocalKeys.push(key);
+        trashSessionsCount++;
+        findings.push({
+          id: `ls-${key}`,
+          source: 'localStorage',
+          category: 'trash_session',
+          label: 'Caché residual de prompts IA',
+          detail: `Llave ${key} innecesaria en modo 0-tokens.`
+        });
+      }
+    }
+
+    // Construir mapa de actividad real (logs con carga, reps, notas o check-in real)
+    const activeLogDayKeys = new Set<string>();
+    const activeAthleteIds = new Set<string>([
+      ...localAthletes.map(a => a.id),
+      ...cloudAthletes.map((a: any) => a.id)
+    ]);
+
+    const registerLogActivity = (athleteId: string | undefined, timestamp: string | undefined, weight: any, reps: any, notes: any, exId: string) => {
+      const hasActivity = Number(weight) > 0 || Number(reps) > 0 || !!String(notes || '').trim() || exId === 'kinetix-class-log';
+      if (hasActivity && timestamp) {
+        const day = String(timestamp).slice(0, 10);
+        if (day) activeLogDayKeys.add(`${athleteId || ''}|${day}`);
+      }
+    };
+
+    localLogs.forEach(l => registerLogActivity(l.athleteId, l.timestamp, l.weight, l.reps, l.notes, l.exerciseId));
+    cloudLogs.forEach((l: any) => registerLogActivity(l.athlete_id, l.timestamp, l.weight, l.reps, l.notes, l.exercise_id));
+
+    // 2. Auditar rutinas e instancias (localStorage + Supabase)
+    const mergedTemplates = new Map<string, { tpl: Workout; source: 'localStorage' | 'Supabase' }>();
+    localTemplates.forEach(t => mergedTemplates.set(t.id, { tpl: t, source: 'localStorage' }));
+    cloudTemplates.forEach(t => mergedTemplates.set(t.id, { tpl: t, source: 'Supabase' }));
+
+    const validTemplateIds = new Set<string>([
+      ...PRESET_WORKOUT_TEMPLATES.map(p => p.id),
+      ...Array.from(mergedTemplates.keys())
+    ]);
+
+    mergedTemplates.forEach(({ tpl, source }) => {
+      if (tpl.id === '__kinetix_sys_branding__') return;
+      const exList = Array.isArray(tpl.exercises) ? tpl.exercises : [];
+      const schedDate = tpl.scheduledDate ? String(tpl.scheduledDate).slice(0, 10) : '';
+      const hasActivityOnDate = !!schedDate && activeLogDayKeys.has(`${tpl.assignedTo || ''}|${schedDate}`);
+
+      if (tpl.isTemplate === false) {
+        if (exList.length === 0 && (!schedDate || (schedDate < todayStr && !hasActivityOnDate))) {
+          trashSessionsCount++;
+          cleanableTemplateIds.add(tpl.id);
+          findings.push({
+            id: `tpl-trash-${tpl.id}`,
+            source,
+            category: 'trash_session',
+            label: tpl.name || 'Sesión vacía sin bloques',
+            detail: `Instancia individual (${tpl.id}) sin ejercicios ni actividad asociada.`,
+            date: schedDate || undefined
+          });
+        } else if (schedDate && schedDate < cutoff30d && !hasActivityOnDate) {
+          stale30dCount++;
+          cleanableTemplateIds.add(tpl.id);
+          findings.push({
+            id: `tpl-stale-${tpl.id}`,
+            source,
+            category: 'stale_30d',
+            label: tpl.name || 'Instancia > 30 días sin actividad',
+            detail: `Programada el ${schedDate} para atleta ${tpl.assignedTo || 'N/A'} sin logs asociados.`,
+            date: schedDate
+          });
+        }
+      }
+
+      exList.forEach(block => {
+        if (block?.exerciseId && !exerciseIdSet.has(block.exerciseId)) {
+          orphanExercisesCount++;
+          findings.push({
+            id: `tpl-ex-${tpl.id}-${block.exerciseId}`,
+            source,
+            category: 'orphan_exercise',
+            label: block.name || block.exerciseId,
+            detail: `Ejercicio huérfano dentro de "${tpl.name}" (no existe en biblioteca actual).`
+          });
+        }
+      });
+    });
+
+    // 3. Auditar eventos de calendario (localStorage + Supabase)
+    const mergedEvents = new Map<string, { evt: any; source: 'localStorage' | 'Supabase' }>();
+    localCalendar.forEach((e: any) => mergedEvents.set(e.id, {
+      evt: {
+        id: e.id,
+        title: e.title,
+        startDate: String(e.start || '').slice(0, 10),
+        athleteIds: Array.isArray(e.athleteIds) ? e.athleteIds : [],
+        workoutTemplateId: e.workoutTemplateId
+      },
+      source: 'localStorage'
+    }));
+    cloudCalendar.forEach((e: any) => mergedEvents.set(e.id, {
+      evt: {
+        id: e.id,
+        title: e.title,
+        startDate: String(e.start_at || '').slice(0, 10),
+        athleteIds: Array.isArray(e.athlete_ids) ? e.athlete_ids : [],
+        workoutTemplateId: e.workout_template_id
+      },
+      source: 'Supabase'
+    }));
+
+    mergedEvents.forEach(({ evt, source }) => {
+      if (evt.workoutTemplateId && !validTemplateIds.has(evt.workoutTemplateId)) {
+        orphanCalendarCount++;
+        cleanableCalendarIds.add(evt.id);
+        findings.push({
+          id: `cal-tpl-${evt.id}`,
+          source,
+          category: 'orphan_calendar',
+          label: evt.title || 'Evento sin rutina destino',
+          detail: `Apunta a plantilla inexistente (${evt.workoutTemplateId}).`,
+          date: evt.startDate
+        });
+        return;
+      }
+
+      if (evt.athleteIds.length > 0 && evt.athleteIds.every((aid: string) => !activeAthleteIds.has(aid))) {
+        orphanCalendarCount++;
+        cleanableCalendarIds.add(evt.id);
+        findings.push({
+          id: `cal-ath-${evt.id}`,
+          source,
+          category: 'orphan_calendar',
+          label: evt.title || 'Evento de atleta eliminado',
+          detail: `Asociado a atleta(s) que ya no existen en el catálogo.`,
+          date: evt.startDate
+        });
+        return;
+      }
+
+      if (evt.startDate && evt.startDate < cutoff30d) {
+        const hasActivity = evt.athleteIds.some((aid: string) => activeLogDayKeys.has(`${aid}|${evt.startDate}`));
+        if (!hasActivity) {
+          stale30dCount++;
+          cleanableCalendarIds.add(evt.id);
+          findings.push({
+            id: `cal-stale-${evt.id}`,
+            source,
+            category: 'stale_30d',
+            label: evt.title || 'Evento > 30 días sin asistencia',
+            detail: `Fecha ${evt.startDate} (> 30 días) sin series ni check-in registrado.`,
+            date: evt.startDate
+          });
+        }
+      }
+    });
+
+    // 4. Auditar logs (basura 0x0 sin nota y ejercicios huérfanos)
+    const seenOrphanLogKeys = new Set<string>();
+    const inspectLog = (row: any, source: 'localStorage' | 'Supabase') => {
+      const w = Number(row.weight) || 0;
+      const r = Number(row.reps) || 0;
+      const notes = String(row.notes || '').trim();
+      const exId = row.exerciseId || row.exercise_id || '';
+      const tsDay = String(row.timestamp || '').slice(0, 10);
+
+      if (w === 0 && r === 0 && !notes && exId !== 'kinetix-class-log') {
+        trashSessionsCount++;
+        if (source === 'Supabase' && row.id) cleanableCloudLogIds.add(String(row.id));
+        findings.push({
+          id: `log-trash-${source}-${row.id || `${exId}-${row.timestamp}`}`,
+          source,
+          category: 'trash_session',
+          label: `Registro vacío (${exId || 'sin ejercicio'})`,
+          detail: 'Log 0kg × 0 reps sin nota técnica.',
+          date: tsDay
+        });
+      } else if (exId && exId !== 'kinetix-class-log' && !exerciseIdSet.has(exId)) {
+        const sig = `${source}:${exId}`;
+        if (!seenOrphanLogKeys.has(sig)) {
+          seenOrphanLogKeys.add(sig);
+          orphanExercisesCount++;
+          findings.push({
+            id: `log-ex-${sig}`,
+            source,
+            category: 'orphan_exercise',
+            label: `ID de ejercicio huérfano: ${exId}`,
+            detail: `Existen logs históricos referenciando este ID fuera de la biblioteca.`,
+            date: tsDay
+          });
+        }
+      }
+    };
+
+    localLogs.forEach(l => inspectLog(l, 'localStorage'));
+    cloudLogs.forEach(l => inspectLog(l, 'Supabase'));
+
+    return {
+      scannedAt: new Date().toISOString(),
+      cutoff30d,
+      cloudChecked,
+      localStats: {
+        templatesCount: localTemplates.length,
+        logsCount: localLogs.length,
+        calendarCount: localCalendar.length,
+        exercisesCount: exercises.length,
+        usedKB: this.getStorageUsage().usedKB
+      },
+      cloudStats: cloudChecked
+        ? {
+            templatesCount: cloudTemplates.length,
+            logsCount: cloudLogs.length,
+            calendarCount: cloudCalendar.length,
+            athletesCount: cloudAthletes.length
+          }
+        : undefined,
+      trashSessionsCount,
+      orphanExercisesCount,
+      orphanCalendarCount,
+      stale30dCount,
+      findings,
+      cleanableTemplateIds: Array.from(cleanableTemplateIds),
+      cleanableCalendarIds: Array.from(cleanableCalendarIds),
+      cleanableCloudLogIds: Array.from(cleanableCloudLogIds),
+      cleanableLocalKeys
+    };
+  }
+
+  async cleanIntegrityIssues(report: IntegrityScanReport): Promise<IntegrityCleanResult> {
+    let removedTemplates = 0;
+    let removedCalendarEvents = 0;
+    let removedCloudLogs = 0;
+    let removedLocalLogs = 0;
+    let removedLocalKeys = 0;
+    let cloudSynced = false;
+
+    // 1. Limpiar llaves obsoletas locales
+    report.cleanableLocalKeys.forEach(k => {
+      if (localStorage.getItem(k) !== null) {
+        localStorage.removeItem(k);
+        removedLocalKeys++;
+      }
+    });
+
+    // 2. Limpiar plantillas/instancias basura o >30d sin actividad en localStorage
+    const tplSet = new Set(report.cleanableTemplateIds);
+    if (tplSet.size > 0) {
+      try {
+        const localTpls: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+        const nextTpls = localTpls.filter(t => !tplSet.has(t.id));
+        removedTemplates = localTpls.length - nextTpls.length;
+        localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(nextTpls));
+        this.writeTemplatesCacheMeta('staff');
+      } catch {}
+    }
+
+    // 3. Limpiar eventos de calendario huérfanos o >30d sin actividad en localStorage
+    const calSet = new Set(report.cleanableCalendarIds);
+    if (calSet.size > 0) {
+      try {
+        const localCal = JSON.parse(localStorage.getItem(KEYS.CALENDAR) || '[]');
+        if (Array.isArray(localCal)) {
+          const nextCal = localCal.filter((e: any) => !calSet.has(e.id));
+          removedCalendarEvents = localCal.length - nextCal.length;
+          localStorage.setItem(KEYS.CALENDAR, JSON.stringify(nextCal));
+        }
+      } catch {}
+    }
+
+    // 4. Limpiar logs basura 0x0 sin nota en localStorage
+    try {
+      const localLogs = this.getAllLogs();
+      const cleanedLogs = localLogs.filter(l => {
+        const isGarbage =
+          Number(l.weight) === 0 &&
+          Number(l.reps) === 0 &&
+          !String(l.notes || '').trim() &&
+          l.exerciseId !== 'kinetix-class-log';
+        return !isGarbage;
+      });
+      removedLocalLogs = localLogs.length - cleanedLogs.length;
+      if (removedLocalLogs > 0) {
+        localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(cleanedLogs));
+      }
+    } catch {}
+
+    // 5. Limpiar en Supabase los mismos registros detectados (en lotes seguros de 50)
+    if (isSupabaseConfigured) {
+      const chunkArray = <T,>(arr: T[], size = 50): T[][] => {
+        const out: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+      try {
+        for (const chunk of chunkArray(report.cleanableTemplateIds)) {
+          const { error } = await supabase.from('kinetix_templates').delete().in('id', chunk);
+          if (!error) removedTemplates += chunk.length;
+        }
+        for (const chunk of chunkArray(report.cleanableCalendarIds)) {
+          const { error } = await supabase.from('kinetix_calendar').delete().in('id', chunk);
+          if (!error) removedCalendarEvents += chunk.length;
+        }
+        for (const chunk of chunkArray(report.cleanableCloudLogIds)) {
+          const { error } = await supabase.from('workout_logs').delete().in('id', chunk);
+          if (!error) removedCloudLogs += chunk.length;
+        }
+        cloudSynced = true;
+      } catch (e) {
+        console.warn('Error limpiando registros en Supabase:', e);
+      }
+    }
+
+    return {
+      removedTemplates,
+      removedCalendarEvents,
+      removedCloudLogs,
+      removedLocalLogs,
+      removedLocalKeys,
+      cloudSynced
+    };
   }
 
   init(d: any) {
