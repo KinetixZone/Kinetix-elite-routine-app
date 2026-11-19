@@ -965,5 +965,153 @@ export const EXERCISES_DB: Exercise[] = [
     videoUrl: 'https://youtube.com/shorts/Hx99A39dEMU?si=WHb1RoGc5h9oRGW5',
     technique: 'Tumbado en el suelo, una pierna elevada a 90°. Sostener la contracción máxima arriba empujando con el talón activo.',
     commonErrors: ['Arquear la zona lumbar para compensar falta de extensión de cadera']
+  },
+
+  // ==========================================
+  // --- FUNCIONAL ZONE, CARDIO METCON & GYM COMPLEMENTOS ---
+  // ==========================================
+  {
+    id: 'fn-19',
+    name: 'Sled Pull (Jalón de Trineo con Cuerda)',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtube.com/shorts/2DxpsLjRwZI?si=362yY_Vy2tN5TsIz',
+    technique: 'Base atlética baja con rodillas flexionadas. Tirar mano sobre mano llevando codos atrás con dorsal y core firmes.',
+    commonErrors: ['Tirar inclinado hacia adelante redondeando la espalda', 'Perder la estabilidad de pies']
+  },
+  {
+    id: 'fn-20',
+    name: 'Sandbag Clean & Carry (Saco Búlgaro / Arena)',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtube.com/shorts/ROAhRv5x-Ow?si=B-2TCElUrZMsRMaN',
+    technique: 'Pegar el saco al centro de gravedad, extender cadera explosivamente y recibir abrazado al pecho antes de caminar.',
+    commonErrors: ['Separar el saco del torso cargando la lumbar', 'No bloquear glúteos en el clean']
+  },
+  {
+    id: 'fn-21',
+    name: 'Devils Press con Mancuernas',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtube.com/shorts/EkK3oVBA__Q?si=_aaScPjJPih7Dp4c',
+    technique: 'Burpee con manos sobre mancuernas seguido de swing entre piernas y snatch simultáneo por encima de la cabeza.',
+    commonErrors: ['Curvar la espalda baja al despegar las mancuernas', 'Flexionar codos antes de extender la cadera']
+  },
+  {
+    id: 'fn-22',
+    name: 'Salto con Cuerda (Jump Rope / Double Unders)',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtu.be/Omk6XKk-BZg?si=PsqRWdeJqSp9Hti0',
+    technique: 'Codos cerca de las costillas, rotación exclusivamente desde las muñecas. Saltos elásticos sobre metatarsos.',
+    commonErrors: ['Abrir demasiado los brazos', 'Encoger rodillas hacia el pecho en cada salto']
+  },
+  {
+    id: 'fn-23',
+    name: 'Remo en Ergómetro (Concept2 Row)',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtube.com/shorts/4o8scFhoDdE?si=BBoPiM9wKL8nvP1C',
+    technique: 'Secuencia 60% piernas, 20% cadera y 20% brazos en el tirón; orden inverso en el retorno.',
+    commonErrors: ['Doblar rodillas antes de pasar las manos en el regreso', 'Tirar primero con los brazos']
+  },
+  {
+    id: 'fn-24',
+    name: 'Air Bike / Assault Bike Sprints',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtu.be/Omk6XKk-BZg?si=PsqRWdeJqSp9Hti0',
+    technique: 'Asiento a la altura de la cresta ilíaca. Coordinar empuje/jalón de brazos con cadencia constante de piernas.',
+    commonErrors: ['Balancear el torso de lado a lado', 'Asiento demasiado bajo']
+  },
+  {
+    id: 'fn-25',
+    name: 'Wall Ball Rotational Toss (Lanzamiento Rotacional)',
+    muscleGroup: 'Funcional',
+    videoUrl: 'https://youtube.com/shorts/FM7sTCeyOrk?si=MIiQ7kAf2xpe0Asv',
+    technique: 'Pivotar el pie trasero y transferir fuerza desde la cadera hacia el balón contra la pared o compañero.',
+    commonErrors: ['Lanzar solo con los brazos sin rotación pélvica']
+  },
+  {
+    id: 'qd-13',
+    name: 'Aductores en Máquina',
+    muscleGroup: 'Piernas',
+    videoUrl: 'https://youtube.com/shorts/HkT-b8oVoF4?si=5VZOnSnAqBpLa2m_',
+    technique: 'Espalda apoyada en el respaldo. Cerrar piernas con control sintiendo aductores y pausa de 1s al centro.',
+    commonErrors: ['Rebotar al abrir en la fase excéntrica']
+  },
+  {
+    id: 'hm-10',
+    name: 'Good Morning con Barra (Buenos Días)',
+    muscleGroup: 'Piernas',
+    videoUrl: 'https://youtube.com/shorts/9z6AYqXkBbY?si=iZgw0BHjmIKFMxIu',
+    technique: 'Barra sobre trapecios, rodillas semiflexionadas (~15°). Bisagra de cadera atrás manteniendo columna neutra.',
+    commonErrors: ['Redondear la espalda lumbar', 'Usar peso excesivo sin dominio técnico']
+  },
+  {
+    id: 'gl-08',
+    name: 'Puente de Glúteo en Piso (Glute Bridge)',
+    muscleGroup: 'Glúteo',
+    videoUrl: 'https://youtube.com/shorts/OK-PC9PVQWQ?si=BVAi8noSR3MdYhLS',
+    technique: 'Espalda alta en colchoneta, talones cerca de glúteos. Elevar pelvis con retroversión sin arquear lumbares.',
+    commonErrors: ['Empujar con las puntas de los pies', 'Hiperextender espalda baja']
+  },
+  {
+    id: 'bk-14',
+    name: 'Remo Unilateral en Polea Baja',
+    muscleGroup: 'Espalda',
+    videoUrl: 'https://youtube.com/shorts/4o8scFhoDdE?si=BBoPiM9wKL8nvP1C',
+    technique: 'Estabilidad del tronco sin rotar hombros. Llevar el maneral hacia la cadera deprimiendo la escápula.',
+    commonErrors: ['Girar todo el torso para completar el tirón']
+  },
+  {
+    id: 'bk-15',
+    name: 'Encogimientos de Trapecio (Shrugs)',
+    muscleGroup: 'Espalda',
+    videoUrl: 'https://youtube.com/shorts/sOij1orUmbk?si=a1sXZqJvoPqK-FhG',
+    technique: 'Brazos estirados. Elevar hombros verticalmente hacia las orejas con pausa de 1 segundo arriba, sin girar.',
+    commonErrors: ['Hacer círculos con los hombros', 'Flexionar los codos']
+  },
+  {
+    id: 'ch-13',
+    name: 'Press Declinado con Barra / Mancuernas',
+    muscleGroup: 'Pecho',
+    videoUrl: 'https://youtu.be/g8oG_jaAxvs?si=ymgMP-_XlUqbZ3TH',
+    technique: 'Banco declinado -15°. Descender la carga hacia la línea inferior del pectoral con escápulas retraídas.',
+    commonErrors: ['Abrir codos a 90°', 'Perder control en el descenso']
+  },
+  {
+    id: 'sh-11',
+    name: 'Reverse Pec Deck (Posterior en Máquina)',
+    muscleGroup: 'Hombro',
+    videoUrl: 'https://youtube.com/shorts/nO-JNf2b3s8?si=5odeLGpzfeY4dkL_',
+    technique: 'Pecho apoyado en respaldo, codos ligeramente flexionados. Abrir en arco amplio aislando deltoides posterior.',
+    commonErrors: ['Encoger trapecios', 'Juntar en exceso escápulas con impulso']
+  },
+  {
+    id: 'bi-07',
+    name: 'Curl Concentrado con Mancuerna',
+    muscleGroup: 'Bíceps',
+    videoUrl: 'https://youtube.com/shorts/ShWdDYEfgoU?si=zrJCabe0t_WU9HP9',
+    technique: 'Tríceps apoyado firmemente en la cara interna del muslo. Subir con supinación completa sin mover el hombro.',
+    commonErrors: ['Impulsar con el hombro o el muslo']
+  },
+  {
+    id: 'tri-08',
+    name: 'Patada de Tríceps en Polea / Mancuerna (Kickback)',
+    muscleGroup: 'Tríceps',
+    videoUrl: 'https://youtube.com/shorts/JVc1KAB_HLY?si=8sVXyezDRUtnjVDX',
+    technique: 'Codo fijo paralelo al torso. Extender completamente el antebrazo atrás manteniendo el hombro inmóvil.',
+    commonErrors: ['Balancear el codo hacia abajo en cada repetición']
+  },
+  {
+    id: 'ab-11',
+    name: 'Dead Bug (Bicho Muerto Core)',
+    muscleGroup: 'Abdomen',
+    videoUrl: 'https://youtube.com/shorts/lJoKi3-XYuw?si=IOLEJ4DGqawF40Xj',
+    technique: 'Zona lumbar pegada al piso. Extender brazo y pierna contrarios exhalando lento sin despegar la espalda.',
+    commonErrors: ['Arquear la espalda baja cuando baja la pierna']
+  },
+  {
+    id: 'ab-12',
+    name: 'Plancha Lateral (Side Plank)',
+    muscleGroup: 'Abdomen',
+    videoUrl: 'https://youtube.com/shorts/3AM7L2k7BEw?si=vEbQE6-xEuzwHEdQ',
+    technique: 'Codo alineado bajo el hombro, cadera elevada en línea recta de cabeza a tobillos activando oblicuos.',
+    commonErrors: ['Dejar caer la cadera o rotar el pecho hacia el suelo']
   }
 ];

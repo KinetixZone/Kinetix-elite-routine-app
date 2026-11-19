@@ -31,7 +31,7 @@ export const LEGACY_EXERCISE_ID_MAP: Record<string, string> = {
   'ch-1': 'ch-01',
   'ch-2': 'ch-02',
   'ch-3': 'ch-03',
-  'ch-5': 'ch-05',
+  'ch-5': 'ch-06',
   'ch-6': 'ch-06',
   'bk-1': 'bk-01',
   'bk-2': 'bk-04',
@@ -57,7 +57,10 @@ export const LEGACY_EXERCISE_ID_MAP: Record<string, string> = {
 
 const LEGACY_EXERCISE_NAME_MAP: Record<string, string> = {
   'press horizontal': 'ch-01',
-  'crossover polea': 'ch-05',
+  'press de banca': 'ch-01',
+  'crossover polea': 'ch-06',
+  'crossover en polea': 'ch-06',
+  'cruce en poleas': 'ch-06',
   'press inclinado': 'ch-02',
   'peck fly': 'ch-03',
   'remo supino': 'bk-01',
@@ -148,6 +151,7 @@ export interface IntegrityScanReport {
   };
   trashSessionsCount: number;
   orphanExercisesCount: number;
+  unavailableExercisesCount: number;
   orphanCalendarCount: number;
   stale30dCount: number;
   findings: IntegrityFinding[];
@@ -158,6 +162,7 @@ export interface IntegrityScanReport {
   repairableTemplates: Workout[];
   repairableCloudLogs: Array<{ id: string; exercise_id: string }>;
   repairableCount: number;
+  autoRepairedOnScan?: number;
 }
 
 export interface IntegrityCleanResult {
@@ -169,6 +174,17 @@ export interface IntegrityCleanResult {
   repairedTemplates: number;
   repairedCloudLogs: number;
   repairedLocalLogs: number;
+  markedUnavailable?: number;
+  cloudSynced: boolean;
+}
+
+export interface AutoRepairResult {
+  repairedLocalTemplates: number;
+  repairedCloudTemplates: number;
+  repairedLocalLogs: number;
+  repairedCloudLogs: number;
+  markedUnavailable: number;
+  totalRepaired: number;
   cloudSynced: boolean;
 }
 
@@ -558,10 +574,15 @@ class StorageService {
     const list = catalog || this.getExercises();
     const idSet = new Set(list.map(e => e.id));
     if (exId && idSet.has(exId)) return exId;
-    if (exId && LEGACY_EXERCISE_ID_MAP[exId] && idSet.has(LEGACY_EXERCISE_ID_MAP[exId])) {
-      return LEGACY_EXERCISE_ID_MAP[exId];
+
+    let cleanName = this.normalizeExerciseLabel(exName);
+    const unavailableWrapped = cleanName.match(/^ejercicio no disponible\s*\((.+)\)$/);
+    if (unavailableWrapped) {
+      cleanName = unavailableWrapped[1].trim();
+    } else if (cleanName === 'ejercicio no disponible') {
+      cleanName = '';
     }
-    const cleanName = this.normalizeExerciseLabel(exName);
+
     if (cleanName) {
       if (LEGACY_EXERCISE_NAME_MAP[cleanName] && idSet.has(LEGACY_EXERCISE_NAME_MAP[cleanName])) {
         return LEGACY_EXERCISE_NAME_MAP[cleanName];
@@ -570,9 +591,13 @@ class StorageService {
       if (exact) return exact.id;
       const partial = list.find(e => {
         const libName = this.normalizeExerciseLabel(e.name);
-        return libName.includes(cleanName) || cleanName.includes(libName);
+        return libName.length >= 4 && cleanName.length >= 4 && (libName.includes(cleanName) || cleanName.includes(libName));
       });
       if (partial) return partial.id;
+    }
+
+    if (exId && LEGACY_EXERCISE_ID_MAP[exId] && idSet.has(LEGACY_EXERCISE_ID_MAP[exId])) {
+      return LEGACY_EXERCISE_ID_MAP[exId];
     }
     return undefined;
   }
@@ -818,14 +843,16 @@ class StorageService {
 
       const localScoped = this.getLocalTemplatesScoped(athleteId);
 
+      const catalog = this.getExercises();
+
       if (athleteId) {
         const serverToday = this.getServerTodayIsoSync();
         const isAllowedForAthlete = (t: Workout) =>
           t.assignedTo === athleteId &&
           (!t.scheduledDate || String(t.scheduledDate).slice(0, 10) <= serverToday);
         const map = new Map<string, Workout>();
-        localScoped.filter(isAllowedForAthlete).forEach(t => map.set(t.id, t));
-        cloudTemplates.filter(isAllowedForAthlete).forEach(t => map.set(t.id, t));
+        localScoped.filter(isAllowedForAthlete).forEach(t => map.set(t.id, this.repairTemplateExerciseRefs(t, catalog).workout));
+        cloudTemplates.filter(isAllowedForAthlete).forEach(t => map.set(t.id, this.repairTemplateExerciseRefs(t, catalog).workout));
         const athleteOnly = Array.from(map.values());
         localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(athleteOnly));
         this.writeTemplatesCacheMeta(scopeKey);
@@ -835,15 +862,17 @@ class StorageService {
       const deletedIds = new Set(this.getDeletedTemplateIds());
       const mergedMap = new Map<string, Workout>();
       PRESET_WORKOUT_TEMPLATES.forEach(p => {
-        if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
+        if (!deletedIds.has(p.id)) mergedMap.set(p.id, this.repairTemplateExerciseRefs(p, catalog).workout);
       });
       localScoped.forEach(t => {
-        if (t.id !== SYS_BRANDING_ROW_ID && t.id !== SYS_EXERCISES_ROW_ID && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
+        if (t.id !== SYS_BRANDING_ROW_ID && t.id !== SYS_EXERCISES_ROW_ID && !deletedIds.has(t.id)) {
+          mergedMap.set(t.id, this.repairTemplateExerciseRefs(t, catalog).workout);
+        }
       });
       cloudTemplates.forEach(t => {
         if (t.id === SYS_BRANDING_ROW_ID || t.id === SYS_EXERCISES_ROW_ID || deletedIds.has(t.id)) return;
         const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
-        if (keepInstance) mergedMap.set(t.id, t);
+        if (keepInstance) mergedMap.set(t.id, this.repairTemplateExerciseRefs(t, catalog).workout);
       });
 
       const merged = Array.from(mergedMap.values());
@@ -1352,16 +1381,29 @@ class StorageService {
       const { data, error } = await query;
       if (error || !data) return local;
 
-      const cloudLogs: WorkoutLog[] = data.map((row: any, idx: number) => ({
-        athleteId: row.athlete_id || undefined,
-        exerciseId: row.exercise_id,
-        setIndex: idx,
-        weight: Number(row.weight) || 0,
-        reps: Number(row.reps) || 0,
-        isPR: !!row.is_pr,
-        notes: row.notes || undefined,
-        timestamp: row.timestamp
-      }));
+      const catalog = this.getExercises();
+      const idSet = new Set(catalog.map(e => e.id));
+      const cloudLogs: WorkoutLog[] = data.map((row: any, idx: number) => {
+        const rawExId = row.exercise_id;
+        const normalizedExId =
+          rawExId &&
+          rawExId !== 'kinetix-class-log' &&
+          rawExId !== 'kinetix-session-done' &&
+          rawExId !== 'kinetix-session-reopen' &&
+          !idSet.has(rawExId)
+            ? this.resolveExerciseId(rawExId, undefined, catalog) || rawExId
+            : rawExId;
+        return {
+          athleteId: row.athlete_id || undefined,
+          exerciseId: normalizedExId,
+          setIndex: idx,
+          weight: Number(row.weight) || 0,
+          reps: Number(row.reps) || 0,
+          isPR: !!row.is_pr,
+          notes: row.notes || undefined,
+          timestamp: row.timestamp
+        };
+      });
 
       const seen = new Set(local.map(l => `${l.athleteId || ''}_${l.exerciseId}_${l.timestamp}_${l.weight}_${l.reps}`));
       const merged = [...local];
@@ -1857,35 +1899,124 @@ class StorageService {
     return { removedKeys, removedTemplates };
   }
 
-  private repairTemplateExerciseRefs(tpl: Workout, catalog: Exercise[]): { workout: Workout; changed: boolean } {
-    const idSet = new Set(catalog.map(e => e.id));
+  private stripUnavailableName(name?: string): string {
+    const raw = String(name || '').trim();
+    const match = raw.match(/^Ejercicio no disponible\s*\((.+)\)$/i);
+    if (match) return match[1].trim();
+    if (/^Ejercicio no disponible$/i.test(raw)) return '';
+    return raw;
+  }
+
+  private formatUnavailableName(name?: string, fallbackId?: string): string {
+    const clean = this.stripUnavailableName(name);
+    if (clean) return `Ejercicio no disponible (${clean})`;
+    if (fallbackId) return `Ejercicio no disponible (${fallbackId})`;
+    return 'Ejercicio no disponible';
+  }
+
+  private repairTemplateExerciseRefs(
+    tpl: Workout,
+    catalog: Exercise[],
+    options?: { markUnresolved?: boolean }
+  ): { workout: Workout; changed: boolean; repairedCount: number; markedCount: number } {
+    const idMap = new Map(catalog.map(e => [e.id, e]));
     let changed = false;
+    let repairedCount = 0;
+    let markedCount = 0;
     const exList = Array.isArray(tpl.exercises) ? tpl.exercises : [];
+
     const repairedExercises = exList.map(block => {
       if (!block) return block;
-      let nextBlock = { ...block };
-      if (block.exerciseId && !idSet.has(block.exerciseId)) {
-        const resolved = this.resolveExerciseId(block.exerciseId, block.name, catalog);
-        if (resolved) {
-          nextBlock.exerciseId = resolved;
-          changed = true;
+      let nextBlock: WorkoutExercise = { ...block };
+
+      if (block.exerciseId) {
+        if (idMap.has(block.exerciseId)) {
+          if (block.isUnavailable || /^Ejercicio no disponible/i.test(block.name || '')) {
+            const cleanName = this.stripUnavailableName(block.name) || idMap.get(block.exerciseId)?.name || block.name;
+            delete nextBlock.isUnavailable;
+            nextBlock.name = cleanName;
+            changed = true;
+          }
+        } else {
+          const resolved = this.resolveExerciseId(block.exerciseId, block.name, catalog);
+          if (resolved) {
+            const matchedEx = idMap.get(resolved);
+            nextBlock.exerciseId = resolved;
+            nextBlock.name = this.stripUnavailableName(block.name) || matchedEx?.name || block.name;
+            if (!nextBlock.videoUrl && matchedEx?.videoUrl) nextBlock.videoUrl = matchedEx.videoUrl;
+            delete nextBlock.isUnavailable;
+            changed = true;
+            repairedCount++;
+          } else if (options?.markUnresolved) {
+            const unavailName = this.formatUnavailableName(block.name, block.exerciseId);
+            if (!nextBlock.isUnavailable || nextBlock.name !== unavailName) {
+              nextBlock.isUnavailable = true;
+              nextBlock.name = unavailName;
+              changed = true;
+              markedCount++;
+            }
+          }
         }
       }
-      if (block.pair?.exerciseId && !idSet.has(block.pair.exerciseId)) {
-        const resolvedPair = this.resolveExerciseId(block.pair.exerciseId, block.pair.name, catalog);
-        if (resolvedPair) {
-          nextBlock.pair = { ...block.pair, exerciseId: resolvedPair };
-          changed = true;
+
+      if (block.pair?.exerciseId) {
+        if (idMap.has(block.pair.exerciseId)) {
+          if (/^Ejercicio no disponible/i.test(block.pair.name || '')) {
+            const cleanPairName = this.stripUnavailableName(block.pair.name) || idMap.get(block.pair.exerciseId)?.name || block.pair.name;
+            nextBlock.pair = { ...block.pair, name: cleanPairName };
+            changed = true;
+          }
+        } else {
+          const resolvedPair = this.resolveExerciseId(block.pair.exerciseId, block.pair.name, catalog);
+          if (resolvedPair) {
+            const matchedPair = idMap.get(resolvedPair);
+            nextBlock.pair = {
+              ...block.pair,
+              exerciseId: resolvedPair,
+              name: this.stripUnavailableName(block.pair.name) || matchedPair?.name || block.pair.name,
+              videoUrl: block.pair.videoUrl || matchedPair?.videoUrl
+            };
+            changed = true;
+            repairedCount++;
+          } else if (options?.markUnresolved) {
+            const unavailPair = this.formatUnavailableName(block.pair.name, block.pair.exerciseId);
+            if (block.pair.name !== unavailPair) {
+              nextBlock.pair = { ...block.pair, name: unavailPair };
+              changed = true;
+              markedCount++;
+            }
+          }
         }
       }
+
       if (Array.isArray(block.supersetChain)) {
         let chainChanged = false;
         const nextChain = block.supersetChain.map(item => {
-          if (item?.exerciseId && !idSet.has(item.exerciseId)) {
-            const resolvedItem = this.resolveExerciseId(item.exerciseId, item.name, catalog);
-            if (resolvedItem) {
+          if (!item?.exerciseId) return item;
+          if (idMap.has(item.exerciseId)) {
+            if (/^Ejercicio no disponible/i.test(item.name || '')) {
               chainChanged = true;
-              return { ...item, exerciseId: resolvedItem };
+              return { ...item, name: this.stripUnavailableName(item.name) || idMap.get(item.exerciseId)?.name || item.name };
+            }
+            return item;
+          }
+          const resolvedItem = this.resolveExerciseId(item.exerciseId, item.name, catalog);
+          if (resolvedItem) {
+            const matchedItem = idMap.get(resolvedItem);
+            chainChanged = true;
+            repairedCount++;
+            return {
+              ...item,
+              exerciseId: resolvedItem,
+              name: this.stripUnavailableName(item.name) || matchedItem?.name || item.name,
+              videoUrl: item.videoUrl || matchedItem?.videoUrl
+            };
+          } else if (options?.markUnresolved) {
+            const unavailItem = this.formatUnavailableName(item.name, item.exerciseId);
+            if (item.name !== unavailItem) {
+              chainChanged = true;
+              markedCount++;
+              return { ...item, name: unavailItem };
             }
           }
           return item;
@@ -1895,17 +2026,26 @@ class StorageService {
           changed = true;
         }
       }
+
       return nextBlock;
     });
+
     return {
       workout: changed ? { ...tpl, exercises: repairedExercises } : tpl,
-      changed
+      changed,
+      repairedCount,
+      markedCount
     };
   }
 
-  repairLocalLegacyExerciseRefs(): { repairedTemplates: number; repairedLocalLogs: number } {
+  repairLocalLegacyExerciseRefs(options?: { markUnresolved?: boolean }): {
+    repairedTemplates: number;
+    repairedLocalLogs: number;
+    markedUnavailable: number;
+  } {
     let repairedTemplates = 0;
     let repairedLocalLogs = 0;
+    let markedUnavailable = 0;
     const catalog = this.getExercises();
     const idSet = new Set(catalog.map(e => e.id));
 
@@ -1914,13 +2054,18 @@ class StorageService {
       if (rawTpls) {
         const parsed: Workout[] = JSON.parse(rawTpls);
         if (Array.isArray(parsed)) {
+          let tplListModified = false;
           const next = parsed.map(t => {
             if (!t || t.id === SYS_BRANDING_ROW_ID || t.id === SYS_EXERCISES_ROW_ID) return t;
-            const res = this.repairTemplateExerciseRefs(t, catalog);
-            if (res.changed) repairedTemplates++;
+            const res = this.repairTemplateExerciseRefs(t, catalog, options);
+            if (res.changed) {
+              tplListModified = true;
+              if (res.repairedCount > 0) repairedTemplates++;
+              markedUnavailable += res.markedCount;
+            }
             return res.workout;
           });
-          if (repairedTemplates > 0) {
+          if (tplListModified) {
             localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(next));
           }
         }
@@ -1953,10 +2098,112 @@ class StorageService {
       }
     } catch {}
 
-    return { repairedTemplates, repairedLocalLogs };
+    return { repairedTemplates, repairedLocalLogs, markedUnavailable };
+  }
+
+  async autoRepairOrphanExercises(options?: {
+    markUnresolved?: boolean;
+    cloud?: boolean;
+  }): Promise<AutoRepairResult> {
+    if (options?.cloud !== false && isSupabaseConfigured) {
+      await this.syncExercisesFromCloud();
+    }
+
+    const catalog = this.getExercises();
+    const idSet = new Set(catalog.map(e => e.id));
+    const localRes = this.repairLocalLegacyExerciseRefs({ markUnresolved: !!options?.markUnresolved });
+
+    let repairedCloudTemplates = 0;
+    let repairedCloudLogs = 0;
+    let markedCloud = 0;
+    let cloudSynced = false;
+
+    if (isSupabaseConfigured && options?.cloud !== false) {
+      try {
+        const [tplRes, logRes] = await Promise.all([
+          supabase.from('kinetix_templates').select('*'),
+          supabase.from('workout_logs').select('id, exercise_id').order('timestamp', { ascending: false }).limit(1000)
+        ]);
+
+        if (!tplRes.error && Array.isArray(tplRes.data)) {
+          for (const rawTpl of tplRes.data as Workout[]) {
+            if (!rawTpl || rawTpl.id === SYS_BRANDING_ROW_ID || rawTpl.id === SYS_EXERCISES_ROW_ID) continue;
+            const res = this.repairTemplateExerciseRefs(rawTpl, catalog, { markUnresolved: !!options?.markUnresolved });
+            if (res.changed) {
+              const { error } = await supabase
+                .from('kinetix_templates')
+                .upsert(this.toCloudTemplatePayload(res.workout));
+              if (!error) {
+                if (res.repairedCount > 0) repairedCloudTemplates++;
+                markedCloud += res.markedCount;
+              }
+            }
+          }
+        }
+
+        if (!logRes.error && Array.isArray(logRes.data)) {
+          const logsByTargetId = new Map<string, string[]>();
+          for (const row of logRes.data as Array<{ id: string; exercise_id: string }>) {
+            const exId = row?.exercise_id || '';
+            if (
+              exId &&
+              exId !== 'kinetix-class-log' &&
+              exId !== 'kinetix-session-done' &&
+              exId !== 'kinetix-session-reopen' &&
+              !idSet.has(exId)
+            ) {
+              const resolved = this.resolveExerciseId(exId, undefined, catalog);
+              if (resolved) {
+                const list = logsByTargetId.get(resolved) || [];
+                list.push(String(row.id));
+                logsByTargetId.set(resolved, list);
+              }
+            }
+          }
+          for (const [targetExId, ids] of logsByTargetId.entries()) {
+            for (let i = 0; i < ids.length; i += 50) {
+              const chunk = ids.slice(i, i + 50);
+              const { error } = await supabase.from('workout_logs').update({ exercise_id: targetExId }).in('id', chunk);
+              if (!error) repairedCloudLogs += chunk.length;
+            }
+          }
+        }
+
+        if (repairedCloudTemplates > 0 || markedCloud > 0) {
+          await this.syncTemplatesFromCloud();
+        }
+        if (repairedCloudLogs > 0) {
+          await this.syncLogsFromCloud();
+        }
+        cloudSynced = true;
+      } catch (e) {
+        console.warn('Auto-repair cloud fallback:', e);
+      }
+    }
+
+    const markedUnavailable = localRes.markedUnavailable + markedCloud;
+    const totalRepaired =
+      localRes.repairedTemplates +
+      repairedCloudTemplates +
+      localRes.repairedLocalLogs +
+      repairedCloudLogs;
+
+    return {
+      repairedLocalTemplates: localRes.repairedTemplates,
+      repairedCloudTemplates,
+      repairedLocalLogs: localRes.repairedLocalLogs,
+      repairedCloudLogs,
+      markedUnavailable,
+      totalRepaired,
+      cloudSynced
+    };
   }
 
   async runIntegrityScan(): Promise<IntegrityScanReport> {
+    // Auto-reparación preventiva antes de auditar para vincular IDs legados (ej. ch-1 -> ch-01, ch-5 -> ch-06)
+    const autoRepair = await this.autoRepairOrphanExercises({ markUnresolved: false, cloud: true });
+    const autoRepairedOnScan = autoRepair.totalRepaired;
+
     const todayStr = this.getServerTodayIsoSync();
     const cutoff30d = this.formatDateInServerTz(new Date(Date.now() - 30 * 86400000));
     const exercises = this.getExercises();
@@ -2019,6 +2266,7 @@ class StorageService {
 
     let trashSessionsCount = 0;
     let orphanExercisesCount = 0;
+    let unavailableExercisesCount = 0;
     let orphanCalendarCount = 0;
     let stale30dCount = 0;
     let repairableCount = 0;
@@ -2112,12 +2360,14 @@ class StorageService {
 
       let tplNeedsRepair = false;
       exList.forEach(block => {
-        if (block?.exerciseId && !exerciseIdSet.has(block.exerciseId)) {
+        if (block?.exerciseId && (!exerciseIdSet.has(block.exerciseId) || block.isUnavailable)) {
           const resolvedId = this.resolveExerciseId(block.exerciseId, block.name, exercises);
           orphanExercisesCount++;
           if (resolvedId) {
             repairableCount++;
             tplNeedsRepair = true;
+          } else {
+            unavailableExercisesCount++;
           }
           findings.push({
             id: `tpl-ex-${tpl.id}-${block.exerciseId}`,
@@ -2126,7 +2376,28 @@ class StorageService {
             label: block.name || block.exerciseId,
             detail: resolvedId
               ? `ID legado "${block.exerciseId}" en "${tpl.name}" (auto-reparable → ${resolvedId}).`
-              : `Ejercicio huérfano dentro de "${tpl.name}" (no existe en biblioteca actual).`
+              : block.isUnavailable
+                ? `Marcado como "Ejercicio no disponible" en "${tpl.name}" — Listo para reasignar en el Editor de Rutinas sin perder series.`
+                : `Sin coincidencia en biblioteca dentro de "${tpl.name}" — Pulsa Auto-Reparar para marcarlo como "Ejercicio no disponible" y reasignarlo.`
+          });
+        }
+        if (block?.pair?.exerciseId && !exerciseIdSet.has(block.pair.exerciseId)) {
+          const resolvedPair = this.resolveExerciseId(block.pair.exerciseId, block.pair.name, exercises);
+          orphanExercisesCount++;
+          if (resolvedPair) {
+            repairableCount++;
+            tplNeedsRepair = true;
+          } else {
+            unavailableExercisesCount++;
+          }
+          findings.push({
+            id: `tpl-pair-${tpl.id}-${block.pair.exerciseId}`,
+            source,
+            category: 'orphan_exercise',
+            label: block.pair.name || block.pair.exerciseId,
+            detail: resolvedPair
+              ? `Biserie legado "${block.pair.exerciseId}" en "${tpl.name}" (auto-reparable → ${resolvedPair}).`
+              : `Biserie sin coincidencia en "${tpl.name}" — Reasignable sin perder estructura.`
           });
         }
       });
@@ -2286,6 +2557,7 @@ class StorageService {
         : undefined,
       trashSessionsCount,
       orphanExercisesCount,
+      unavailableExercisesCount,
       orphanCalendarCount,
       stale30dCount,
       findings,
@@ -2295,7 +2567,8 @@ class StorageService {
       cleanableLocalKeys,
       repairableTemplates: Array.from(repairableTemplatesMap.values()),
       repairableCloudLogs,
-      repairableCount
+      repairableCount,
+      autoRepairedOnScan
     };
   }
 
@@ -2308,6 +2581,7 @@ class StorageService {
     let repairedTemplates = 0;
     let repairedCloudLogs = 0;
     let repairedLocalLogs = 0;
+    let markedUnavailable = 0;
     let cloudSynced = false;
 
     // 1. Limpiar llaves obsoletas locales
@@ -2329,11 +2603,6 @@ class StorageService {
         this.writeTemplatesCacheMeta('staff');
       } catch {}
     }
-
-    // 2b. Auto-reparar referencias de ejercicios legados (ej. ch-1 -> ch-01) en caché y logs locales
-    const localRepair = this.repairLocalLegacyExerciseRefs();
-    repairedTemplates += localRepair.repairedTemplates;
-    repairedLocalLogs += localRepair.repairedLocalLogs;
 
     // 3. Limpiar eventos de calendario huérfanos o >30d sin actividad en localStorage
     const calSet = new Set(report.cleanableCalendarIds);
@@ -2367,7 +2636,7 @@ class StorageService {
       }
     } catch {}
 
-    // 5. Limpiar y reparar en Supabase los mismos registros detectados (en lotes seguros de 50)
+    // 5. Limpiar en Supabase los registros basura detectados (en lotes seguros de 50)
     if (isSupabaseConfigured) {
       const chunkArray = <T,>(arr: T[], size = 50): T[][] => {
         const out: T[][] = [];
@@ -2387,30 +2656,19 @@ class StorageService {
           const { error } = await supabase.from('workout_logs').delete().in('id', chunk);
           if (!error) removedCloudLogs += chunk.length;
         }
-        for (const tpl of report.repairableTemplates || []) {
-          const { error } = await supabase.from('kinetix_templates').upsert(this.toCloudTemplatePayload(tpl));
-          if (!error) repairedTemplates++;
-        }
-        const logsByTargetId = new Map<string, string[]>();
-        (report.repairableCloudLogs || []).forEach(item => {
-          const arr = logsByTargetId.get(item.exercise_id) || [];
-          arr.push(item.id);
-          logsByTargetId.set(item.exercise_id, arr);
-        });
-        for (const [targetExId, ids] of logsByTargetId.entries()) {
-          for (const chunk of chunkArray(ids)) {
-            const { error } = await supabase.from('workout_logs').update({ exercise_id: targetExId }).in('id', chunk);
-            if (!error) repairedCloudLogs += chunk.length;
-          }
-        }
-        if ((report.repairableTemplates || []).length > 0) {
-          await this.syncTemplatesFromCloud();
-        }
         cloudSynced = true;
       } catch (e) {
         console.warn('Error limpiando registros en Supabase:', e);
       }
     }
+
+    // 6. Auto-reparar huérfanos en Local + Supabase (vinculando a biblioteca central o marcando 'Ejercicio no disponible')
+    const repairRes = await this.autoRepairOrphanExercises({ markUnresolved: true, cloud: true });
+    repairedTemplates += repairRes.repairedLocalTemplates + repairRes.repairedCloudTemplates;
+    repairedLocalLogs += repairRes.repairedLocalLogs;
+    repairedCloudLogs += repairRes.repairedCloudLogs;
+    markedUnavailable += repairRes.markedUnavailable;
+    cloudSynced = cloudSynced || repairRes.cloudSynced;
 
     return {
       removedTemplates,
@@ -2421,6 +2679,7 @@ class StorageService {
       repairedTemplates,
       repairedCloudLogs,
       repairedLocalLogs,
+      markedUnavailable,
       cloudSynced
     };
   }

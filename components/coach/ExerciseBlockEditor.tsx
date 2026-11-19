@@ -23,6 +23,10 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
     exercise.pair
       ? storageService.resolveExerciseId(exercise.pair.exerciseId, exercise.pair.name, allExercises) || exercise.pair.exerciseId
       : '';
+  const isPrimaryUnavailable =
+    !!exercise.isUnavailable || (!!resolvedPrimaryId && !allExercises.some(x => x.id === resolvedPrimaryId));
+  const isPairUnavailable =
+    !!(exercise.pair && resolvedPairId && !allExercises.some(x => x.id === resolvedPairId));
   
   const groupedExercises = useMemo(() => {
     const groups: Record<string, typeof allExercises> = {};
@@ -201,7 +205,7 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
         {/* HEADER: CONFIGURACIÓN PRINCIPAL */}
         <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between bg-white/[0.02] p-6 rounded-[32px] border border-white/5">
             <div className="flex-1 space-y-3 w-full">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                         <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Ejercicio Alpha (A)</p>
                         {activeVideoUrl && (
@@ -214,10 +218,21 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
                           </button>
                         )}
                     </div>
-                    <select className="w-full bg-transparent text-xl font-black uppercase italic text-white outline-none cursor-pointer" value={resolvedPrimaryId} onChange={e => {
+                    {isPrimaryUnavailable && (
+                      <div className="bg-amber-950/50 border border-amber-500/40 rounded-xl px-3.5 py-2 text-[11px] font-bold text-amber-200 flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>Ejercicio no disponible en biblioteca ({exercise.name || exercise.exerciseId}) — Reasigna abajo sin perder series ni cargas.</span>
+                      </div>
+                    )}
+                    <select className={`w-full bg-transparent text-xl font-black uppercase italic outline-none cursor-pointer ${isPrimaryUnavailable ? 'text-amber-300' : 'text-white'}`} value={resolvedPrimaryId} onChange={e => {
                         const sel = allExercises.find(x => x.id === e.target.value);
-                        if (sel) handleUpdate({ exerciseId: sel.id, name: sel.name, videoUrl: sel.videoUrl, coachCue: exercise.coachCue || sel.technique });
+                        if (sel) handleUpdate({ exerciseId: sel.id, name: sel.name, videoUrl: sel.videoUrl, coachCue: exercise.coachCue || sel.technique, isUnavailable: undefined });
                     }}>
+                      {isPrimaryUnavailable && (
+                        <option value={resolvedPrimaryId}>
+                          ⚠️ {exercise.name || `Ejercicio no disponible (${resolvedPrimaryId})`} — Reasignar...
+                        </option>
+                      )}
                       {Object.keys(groupedExercises).map(cat => (
                         <optgroup key={cat} label={cat.toUpperCase()} className="bg-[#0F0F11]">
                           {groupedExercises[cat].map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
@@ -228,7 +243,7 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
 
                 {/* EJERCICIO B (BISERIE, TRISERIE, GIGANTE) */}
                 {['biserie', 'triserie', 'giant_set'].includes(exercise.method || '') && (
-                    <div className="pt-4 border-t border-white/5 space-y-1 animate-in slide-in-from-left-2">
+                    <div className="pt-4 border-t border-white/5 space-y-1.5 animate-in slide-in-from-left-2">
                         <div className="flex justify-between items-center">
                             <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em]">Ejercicio Bravo (B)</p>
                             {exercise.pair?.videoUrl && (
@@ -241,11 +256,21 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
                               </button>
                             )}
                         </div>
-                        <select className="w-full bg-transparent text-xl font-black uppercase italic text-blue-400 outline-none cursor-pointer" value={resolvedPairId} onChange={e => {
+                        {isPairUnavailable && (
+                          <div className="bg-amber-950/50 border border-amber-500/40 rounded-xl px-3 py-1.5 text-[10px] font-bold text-amber-200">
+                            ⚠️ Ejercicio B no disponible en biblioteca ({exercise.pair?.name || resolvedPairId}) — Elige reemplazo.
+                          </div>
+                        )}
+                        <select className={`w-full bg-transparent text-xl font-black uppercase italic outline-none cursor-pointer ${isPairUnavailable ? 'text-amber-300' : 'text-blue-400'}`} value={resolvedPairId} onChange={e => {
                             const sel = allExercises.find(x => x.id === e.target.value);
-                            if (sel) handleUpdate({ pair: { exerciseId: sel.id, name: sel.name, targetReps: '10', targetLoad: '0', videoUrl: sel.videoUrl } });
+                            if (sel) handleUpdate({ pair: { ...(exercise.pair || { targetReps: '10', targetLoad: '0' }), exerciseId: sel.id, name: sel.name, videoUrl: sel.videoUrl } });
                         }}>
                           <option value="">-- SELECCIONAR B --</option>
+                          {isPairUnavailable && (
+                            <option value={resolvedPairId}>
+                              ⚠️ {exercise.pair?.name || `Ejercicio no disponible (${resolvedPairId})`} — Reasignar...
+                            </option>
+                          )}
                           {allExercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
                         </select>
                     </div>
@@ -288,8 +313,13 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
                                             )}
                                         </div>
                                     </div>
+                                    {!!sub.exerciseId && !allExercises.some(x => x.id === sub.exerciseId) && (
+                                      <p className="text-[10px] font-bold text-amber-300">
+                                        ⚠️ Ejercicio {letter} no disponible ({sub.name || sub.exerciseId}) — Reasignar abajo.
+                                      </p>
+                                    )}
                                     <select 
-                                        className={`w-full bg-transparent text-xl font-black uppercase italic ${titleColor} outline-none cursor-pointer`}
+                                        className={`w-full bg-transparent text-xl font-black uppercase italic ${!!sub.exerciseId && !allExercises.some(x => x.id === sub.exerciseId) ? 'text-amber-300' : titleColor} outline-none cursor-pointer`}
                                         value={sub.exerciseId}
                                         onChange={e => {
                                             const sel = allExercises.find(x => x.id === e.target.value);
@@ -301,6 +331,9 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
                                         }}
                                     >
                                         <option value="">-- SELECCIONAR {letter} --</option>
+                                        {!!sub.exerciseId && !allExercises.some(x => x.id === sub.exerciseId) && (
+                                          <option value={sub.exerciseId}>⚠️ {sub.name || `Ejercicio no disponible (${sub.exerciseId})`} — Reasignar...</option>
+                                        )}
                                         {allExercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
                                     </select>
                                 </div>

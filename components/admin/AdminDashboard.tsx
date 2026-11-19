@@ -59,21 +59,60 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
               report.orphanExercisesCount +
               report.orphanCalendarCount +
               report.stale30dCount;
+          const autoFixed = report.autoRepairedOnScan || 0;
           setIntegrityLogs(prev => [
               ...prev.slice(-10),
+              ...(autoFixed > 0 ? [`[${new Date().toLocaleTimeString()}] AUTO_REPAIR: ${autoFixed} IDs legados vinculados a biblioteca central.`] : []),
               `[${new Date().toLocaleTimeString()}] CLOUD_SYNC: ${report.cloudChecked ? 'SUPABASE_OK' : 'LOCAL_ONLY'} · CORTE_30D=${report.cutoff30d}`,
               `[${new Date().toLocaleTimeString()}] RESULTADO: ${totalIssues} hallazgos (${report.stale30dCount} >30d, ${report.trashSessionsCount} basura, ${report.orphanExercisesCount} huérfanos)`
           ]);
           notifyAdmin(
               totalIssues === 0
-                  ? '✅ Integridad verificada: 0 sesiones basura y 0 ejercicios huérfanos.'
-                  : `⚠️ Escaneo listo: ${totalIssues} incidencias detectadas (${report.cloudChecked ? 'Local + Supabase' : 'Local'}).`,
+                  ? autoFixed > 0
+                    ? `✅ Auto-reparados ${autoFixed} IDs legados. Base 100% limpia (0 hallazgos).`
+                    : '✅ Integridad verificada: 0 sesiones basura y 0 ejercicios huérfanos.'
+                  : `⚠️ Escaneo listo: ${totalIssues} incidencias detectadas (${autoFixed} auto-reparadas en escaneo).`,
               totalIssues === 0
           );
       } catch (e: any) {
           notifyAdmin(`❌ Error al escanear integridad: ${e?.message || 'desconocido'}`, false);
       } finally {
           setIsScanningIntegrity(false);
+      }
+  };
+
+  const handleAutoRepairOrphans = async () => {
+      setIsCleaningIntegrity(true);
+      setIntegrityLogs(prev => [...prev.slice(-10), `[${new Date().toLocaleTimeString()}] AUTO_REPARANDO_HUERFANOS_LOCAL_Y_NUBE...`]);
+      try {
+          const repairRes = await storageService.autoRepairOrphanExercises({ markUnresolved: true, cloud: true });
+          const refreshed = await storageService.runIntegrityScan();
+          setIntegrityReport(refreshed);
+          setStorageTick(t => t + 1);
+          setLastCleanResult({
+              removedTemplates: 0,
+              removedCalendarEvents: 0,
+              removedCloudLogs: 0,
+              removedLocalLogs: 0,
+              removedLocalKeys: 0,
+              repairedTemplates: repairRes.repairedLocalTemplates + repairRes.repairedCloudTemplates,
+              repairedCloudLogs: repairRes.repairedCloudLogs,
+              repairedLocalLogs: repairRes.repairedLocalLogs,
+              markedUnavailable: repairRes.markedUnavailable,
+              cloudSynced: repairRes.cloudSynced
+          });
+          setIntegrityLogs(prev => [
+              ...prev.slice(-10),
+              `[${new Date().toLocaleTimeString()}] AUTO_REPAIR_OK: ${repairRes.totalRepaired} vinculados, ${repairRes.markedUnavailable} marcados 'Ejercicio no disponible'`
+          ]);
+          notifyAdmin(
+              `🔧 Auto-reparación lista (${repairRes.cloudSynced ? 'Local + Supabase' : 'Local'}): ${repairRes.totalRepaired} IDs vinculados y ${repairRes.markedUnavailable} marcados como "Ejercicio no disponible" para reasignar.`,
+              true
+          );
+      } catch (e: any) {
+          notifyAdmin(`❌ Error al auto-reparar huérfanos: ${e?.message || 'desconocido'}`, false);
+      } finally {
+          setIsCleaningIntegrity(false);
       }
   };
 
@@ -103,7 +142,7 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
               `[${new Date().toLocaleTimeString()}] LIMPIEZA_OK: ${totalCleaned} registros purgados/reparados (${res.cloudSynced ? 'Local + Supabase' : 'Local'})`
           ]);
           notifyAdmin(
-              `🧹 Integridad completada: ${repairedTotal} IDs huérfanos reparados, ${res.removedTemplates} instancias/borradores, ${res.removedCalendarEvents} eventos >30d, ${res.removedCloudLogs + res.removedLocalLogs} logs vacíos y ${res.removedLocalKeys} llaves locales.`,
+              `🧹 Integridad completada: ${repairedTotal} IDs huérfanos reparados, ${res.markedUnavailable || 0} marcados "Ejercicio no disponible", ${res.removedTemplates} instancias/borradores, ${res.removedCalendarEvents} eventos >30d y ${res.removedCloudLogs + res.removedLocalLogs} logs vacíos.`,
               true
           );
       } catch (e: any) {
@@ -819,14 +858,23 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                     {isScanningIntegrity ? 'Escaneando...' : '🔍 Escanear Integridad'}
                                 </button>
 
-                                {integrityReport && (integrityReport.cleanableTemplateIds.length + integrityReport.cleanableCalendarIds.length + integrityReport.cleanableCloudLogIds.length + integrityReport.cleanableLocalKeys.length + integrityReport.trashSessionsCount + (integrityReport.repairableCount || 0) > 0) && (
+                                <button
+                                    type="button"
+                                    onClick={handleAutoRepairOrphans}
+                                    disabled={isCleaningIntegrity || isScanningIntegrity}
+                                    className="px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-black rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(245,158,11,0.25)]"
+                                >
+                                    {isCleaningIntegrity ? 'Reparando...' : '🔧 Auto-Reparar Huérfanos'}
+                                </button>
+
+                                {integrityReport && (integrityReport.cleanableTemplateIds.length + integrityReport.cleanableCalendarIds.length + integrityReport.cleanableCloudLogIds.length + integrityReport.cleanableLocalKeys.length + integrityReport.trashSessionsCount + integrityReport.orphanExercisesCount + (integrityReport.repairableCount || 0) > 0) && (
                                     <button
                                         type="button"
                                         onClick={handleCleanIntegrity}
                                         disabled={isCleaningIntegrity || isScanningIntegrity}
                                         className="px-6 py-3.5 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(220,38,38,0.35)]"
                                     >
-                                        {isCleaningIntegrity ? 'Reparando y Limpiando...' : '🧹 Reparar Huérfanos y Limpiar >30d'}
+                                        {isCleaningIntegrity ? 'Reparando y Limpiando...' : '🧹 Reparar y Limpiar >30d'}
                                     </button>
                                 )}
                             </div>
@@ -894,13 +942,24 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                     </div>
                                 </div>
 
+                                {(integrityReport.autoRepairedOnScan || 0) > 0 && (
+                                    <div className="p-4 rounded-2xl bg-cyan-950/35 border border-cyan-500/40 text-xs text-cyan-200 flex flex-wrap items-center justify-between gap-2">
+                                        <span className="font-black uppercase tracking-wide">
+                                            🔧 Auto-reparación preventiva en este escaneo:
+                                        </span>
+                                        <span className="font-mono text-[11px] font-bold">
+                                            {integrityReport.autoRepairedOnScan} referencias legadas vinculadas automáticamente a la biblioteca central
+                                        </span>
+                                    </div>
+                                )}
+
                                 {lastCleanResult && (
                                     <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 flex flex-wrap items-center justify-between gap-2">
                                         <span className="font-black uppercase tracking-wide">
                                             ✅ Última reparación y limpieza ({lastCleanResult.cloudSynced ? 'Local + Supabase' : 'Local'}):
                                         </span>
                                         <span className="font-mono text-[11px]">
-                                            {(lastCleanResult.repairedTemplates || 0) + (lastCleanResult.repairedCloudLogs || 0) + (lastCleanResult.repairedLocalLogs || 0)} IDs reparados · {lastCleanResult.removedTemplates} rutinas/instancias · {lastCleanResult.removedCalendarEvents} eventos · {lastCleanResult.removedCloudLogs + lastCleanResult.removedLocalLogs} logs vacíos · {lastCleanResult.removedLocalKeys} llaves
+                                            {(lastCleanResult.repairedTemplates || 0) + (lastCleanResult.repairedCloudLogs || 0) + (lastCleanResult.repairedLocalLogs || 0)} IDs vinculados · {lastCleanResult.markedUnavailable || 0} marcados no disponibles · {lastCleanResult.removedTemplates} rutinas · {lastCleanResult.removedCalendarEvents} eventos · {lastCleanResult.removedCloudLogs + lastCleanResult.removedLocalLogs} logs vacíos
                                         </span>
                                     </div>
                                 )}

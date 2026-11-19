@@ -485,15 +485,27 @@ export const WorkoutManager: React.FC = () => {
                    if (categoryFilter === 'personalizado') return tpl.category === 'personalizado' || tpl.name.toLowerCase().includes('personalizado');
                    return tpl.category === categoryFilter;
                  })
-                 .map(tpl => (
+                 .map(tpl => {
+                   const libIdSet = new Set(libraryExercises.map(e => e.id));
+                   const hasUnavailable = (tpl.exercises || []).some(block =>
+                     !!block?.isUnavailable ||
+                     (!!block?.exerciseId && !libIdSet.has(block.exerciseId) && !storageService.resolveExerciseId(block.exerciseId, block.name, libraryExercises)) ||
+                     (!!block?.pair?.exerciseId && !libIdSet.has(block.pair.exerciseId) && !storageService.resolveExerciseId(block.pair.exerciseId, block.pair.name, libraryExercises))
+                   );
+                   return (
                    <div key={tpl.id} className="group flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#0F0F11] border border-white/10 hover:border-white/25 p-5 md:p-6 rounded-3xl transition-all">
                        <div className="space-y-1">
-                           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                           <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/40">
                               <span className={tpl.category === 'travel' ? 'text-cyan-400' : tpl.category === 'personalizado' ? 'text-amber-400' : 'text-red-400'}>
                                 {tpl.category === 'travel' ? '🏖️ Vacaciones' : tpl.category === 'personalizado' ? '⭐ Jorge 1-on-1' : 'Kinetix Master'}
                               </span>
                               <span>·</span>
                               <span>{tpl.exercises?.length || 0} Ejercicios</span>
+                              {hasUnavailable && (
+                                <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[9px] font-black">
+                                  ⚠️ Reasignar ejercicio no disponible
+                                </span>
+                              )}
                            </div>
                            <h3 className="text-xl font-black uppercase italic tracking-tight text-white">{tpl.name}</h3>
                            {tpl.publicTitle && tpl.publicTitle !== tpl.name && (
@@ -518,7 +530,8 @@ export const WorkoutManager: React.FC = () => {
                            )}
                        </div>
                    </div>
-               ))}
+                   );
+                 })}
             </div>
          </div>
        )}

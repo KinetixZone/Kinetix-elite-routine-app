@@ -171,6 +171,7 @@ export interface WorkoutExercise {
   coachCue?: string; 
   technicalCues?: string;
   videoUrl?: string;
+  isUnavailable?: boolean;
   method?: TrainingMethod;
   progression?: ProgressionRule;
   pair?: { 
