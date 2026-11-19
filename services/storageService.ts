@@ -43,6 +43,7 @@ export interface BrandingConfig {
     bankAccount?: string;
     bankConceptNote?: string;
     whatsappReceipts?: string;
+    customMasterKey?: string;
 }
 
 export interface MuscleStatus {
@@ -1335,9 +1336,16 @@ class StorageService {
     }
   }
 
-  getLastPerformance(exId: string) {
-      const logs = this.getAllLogs().filter(l => l.exerciseId === exId).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
-      return logs.length > 0 ? { weight: logs[0].weight, reps: logs[0].reps } : null;
+  getLastPerformance(exId: string, athleteId?: string) {
+      const logs = this.getAllLogs()
+        .filter(
+          l =>
+            l.exerciseId === exId &&
+            (!athleteId || !l.athleteId || l.athleteId === athleteId) &&
+            (Number(l.weight) > 0 || Number(l.reps) > 0)
+        )
+        .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      return logs.length > 0 ? { weight: Number(logs[0].weight) || 0, reps: Number(logs[0].reps) || 0 } : null;
   }
 
   getAiBlueprints(): AiBlueprint[] { 

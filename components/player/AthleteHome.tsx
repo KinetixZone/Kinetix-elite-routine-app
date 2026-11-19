@@ -85,6 +85,23 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     void storageService.syncBrandingFromCloud().then(setBranding);
   }, []);
 
+  const daysUntilCycleEnd = useMemo(() => {
+    if (user.role !== 'client' || user.isUnlimited || !user.cycleEndDate || user.isActive === false) return null;
+    const todayIso = storageService.getServerTodayIsoSync();
+    const endIso = String(user.cycleEndDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(endIso)) return null;
+    const t0 = new Date(`${todayIso}T12:00:00Z`).getTime();
+    const t1 = new Date(`${endIso}T12:00:00Z`).getTime();
+    return Math.round((t1 - t0) / 86400000);
+  }, [user]);
+
+  const goToSpeiTransfer = () => {
+    switchTab('profile');
+    setTimeout(() => {
+      document.getElementById('kinetix-spei-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  };
+
   const switchTab = (next: 'train' | 'progress' | 'profile') => {
     setActiveTab(prev => {
       if (prev === next) return prev;
@@ -340,6 +357,28 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
          
          {activeTab === 'train' && (
              <div className="space-y-6 animate-in fade-in">
+
+                 {/* AVISO AUTOMÁTICO 3 DÍAS ANTES DEL CORTE -> TRANSFERENCIA SPEI */}
+                 {daysUntilCycleEnd !== null && daysUntilCycleEnd >= 0 && daysUntilCycleEnd <= 3 && (
+                   <div className="bg-amber-950/35 border border-amber-500/40 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                     <div className="flex items-center gap-2.5 min-w-0">
+                       <span className="text-base shrink-0">⏳</span>
+                       <p className="text-xs font-bold text-amber-200 leading-snug">
+                         Tu ciclo vence el <strong className="text-white">{user.cycleEndDate}</strong>{' '}
+                         <span className="text-amber-300/90">
+                           ({daysUntilCycleEnd === 0 ? '¡hoy!' : daysUntilCycleEnd === 1 ? 'mañana' : `en ${daysUntilCycleEnd} días`})
+                         </span>
+                       </p>
+                     </div>
+                     <button
+                       type="button"
+                       onClick={goToSpeiTransfer}
+                       className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black uppercase tracking-wider transition-all shrink-0"
+                     >
+                       Ver Transferencia SPEI →
+                     </button>
+                   </div>
+                 )}
 
                  {/* CINTA SEMANAL INTERACTIVA (Solo historial pasado + Hoy + Enfoque muscular únicamente de Mañana) */}
                  <section aria-label="Calendario semanal" className="bg-[#0F0F11] border border-white/10 rounded-3xl p-4">
@@ -696,7 +735,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                  </div>
 
                  {/* DATOS PARA TRANSFERENCIA BANCARIA (SPEI / RENOVACIÓN) */}
-                 <div className="bg-[#0F0F11] border border-cyan-500/25 rounded-3xl p-6 space-y-4">
+                 <div id="kinetix-spei-card" className="bg-[#0F0F11] border border-cyan-500/25 rounded-3xl p-6 space-y-4">
                    <div className="flex flex-wrap justify-between items-center gap-2">
                      <div>
                        <span className="text-[9px] font-black uppercase tracking-widest text-cyan-400">Renovación / Mensualidad</span>

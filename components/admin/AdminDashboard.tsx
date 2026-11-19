@@ -766,6 +766,23 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                         </div>
                     </div>
 
+                    <div className="pt-6 border-t border-white/10 space-y-3">
+                        <div>
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-red-400">Seguridad de Dueños (Leslie & Jorge)</span>
+                            <h3 className="text-lg font-black uppercase italic text-white mt-0.5">🔐 Clave Maestra Personalizada</h3>
+                            <p className="text-[11px] text-white/45">
+                                Define una clave nueva para iniciar sesión como Dueña/Coach en cualquier dispositivo (sincronizada en Supabase).
+                            </p>
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Ej: MiNuevaClave2026 (opcional, mín. 4 caracteres)"
+                            value={branding.customMasterKey || ''}
+                            onChange={e => setBranding({ ...branding, customMasterKey: e.target.value })}
+                            className="w-full bg-black border border-white/10 focus:border-red-500 rounded-xl p-3.5 text-xs font-mono text-white outline-none"
+                        />
+                    </div>
+
                     <button onClick={handleSaveBranding} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all">Guardar Cambios y Datos Bancarios</button>
                 </div>
             )}

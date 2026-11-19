@@ -60,6 +60,8 @@ class AuthService {
         // Validación de Dueños (Leslie & Jorge)
         if (isOwner) {
             if (!pwdClean) return { success: false, error: "CLAVE MAESTRA REQUERIDA" };
+            const brandingCfg = await storageService.syncBrandingFromCloud();
+            const customOwnerKey = brandingCfg.customMasterKey?.trim();
             const validMasterKeys = [
                 this.getMasterKey(), // 'kinetix.2302'
                 'admin',
@@ -67,6 +69,7 @@ class AuthService {
                 'kinetix.jorge',
                 'kinetix.coach',
                 'kinetix123',
+                ...(customOwnerKey ? [customOwnerKey] : []),
                 ...(account?.password ? [account.password.trim()] : [])
             ];
             if (!validMasterKeys.includes(pwdClean)) {

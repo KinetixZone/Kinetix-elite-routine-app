@@ -272,14 +272,22 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     restDuration: number;
   } | null>(null);
 
+  const [copiedPrevIdx, setCopiedPrevIdx] = useState<number | null>(null);
+
   const ghostMap = useMemo(() => {
-    const map: Record<string, { weight: number, reps: number }> = {};
+    const map: Record<string, { weight: number; reps: number }> = {};
+    const collect = (exId?: string) => {
+      if (!exId || map[exId]) return;
+      const last = storageService.getLastPerformance(exId, user?.id);
+      if (last && (last.weight > 0 || last.reps > 0)) map[exId] = last;
+    };
     workout.exercises.forEach(ex => {
-      const last = storageService.getLastPerformance(ex.exerciseId);
-      if (last) map[ex.exerciseId] = last;
+      collect(ex.exerciseId);
+      if (ex.pair?.exerciseId) collect(ex.pair.exerciseId);
+      (ex.supersetChain || []).forEach(sub => collect(sub.exerciseId));
     });
     return map;
-  }, [workout]);
+  }, [workout, user?.id]);
 
   // Overall workout elapsed timer
   useEffect(() => {
@@ -482,6 +490,36 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
         workoutLogs: updatedLogs
       };
     });
+  };
+
+  const handleFillPreviousSession = (exIdx: number, rows: TrackingRow[]) => {
+    setProgress(p => {
+      const nextPerf = { ...p.performanceData };
+      let filledAny = false;
+      rows.forEach(row => {
+        const g = ghostMap[row.exerciseId];
+        const refKg = g && (g.weight > 0 || g.reps > 0) ? g.weight : parseWeightValue(row.targetWeight);
+        const refReps = g && g.reps > 0 ? g.reps : parseWeightValue(row.targetReps);
+        const visibleWeight = displayUnit === 'lbs'
+          ? Math.round(refKg * 2.20462 * 10) / 10
+          : refKg;
+        const exData = nextPerf[row.exerciseId] || { weights: [], reps: [] };
+        const nextWeights = [...(exData.weights || [])];
+        const nextReps = [...(exData.reps || [])];
+        if (visibleWeight > 0) {
+          nextWeights[row.globalIndex] = visibleWeight;
+          filledAny = true;
+        }
+        if (refReps > 0) {
+          nextReps[row.globalIndex] = refReps;
+          filledAny = true;
+        }
+        nextPerf[row.exerciseId] = { weights: nextWeights, reps: nextReps };
+      });
+      return filledAny ? { ...p, performanceData: nextPerf } : p;
+    });
+    setCopiedPrevIdx(exIdx);
+    setTimeout(() => setCopiedPrevIdx(prev => (prev === exIdx ? null : prev)), 2200);
   };
 
   const openIntervalClock = (ex: WorkoutExercise) => {
@@ -858,40 +896,70 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     </div>
                   )}
 
-                  {/* TRACKING ROWS */}
-                  <div className="space-y-2.5 pt-2">
+                  {/* BOTÓN 1-TOQUE: IGUAL QUE LA SESIÓN ANTERIOR */}
+                  {(() => {
+                    const hasAnyGhost = rows.some(r => !!ghostMap[r.exerciseId]);
+                    const hasAnyTarget = rows.some(r => parseWeightValue(r.targetWeight) > 0 || parseWeightValue(r.targetReps) > 0);
+                    if (!hasAnyGhost && !hasAnyTarget) return null;
+                    const primaryGhost = ghostMap[ex.exerciseId];
+                    const hintText = primaryGhost
+                      ? `${displayUnit === 'lbs' ? Math.round(primaryGhost.weight * 2.20462 * 10) / 10 : primaryGhost.weight} ${displayUnit} × ${primaryGhost.reps}`
+                      : '';
+                    return (
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleFillPreviousSession(i, rows)}
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black border border-cyan-500/35 text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <span>↺</span>
+                          <span>
+                            {copiedPrevIdx === i
+                              ? '✓ Series rellenadas'
+                              : hasAnyGhost
+                              ? `Igual que la sesión anterior${hintText ? ` (${hintText})` : ''}`
+                              : 'Cargar pesos y reps objetivo'}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* TRACKING ROWS (RESPONSIVO PARA CELULAR Y ESCRITORIO) */}
+                  <div className="space-y-2.5 pt-1">
                     {rows.map((row, rIdx) => {
                       const log = progress.workoutLogs.find(l => l.exerciseId === row.exerciseId && l.setIndex === row.globalIndex);
+                      const rowGhost = ghostMap[row.exerciseId];
                       return (
                         <div 
                           key={rIdx} 
-                          className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
-                            log ? 'bg-green-600/10 border-green-500/30' : 'bg-black/60 border-white/5 hover:border-white/10'
+                          className={`flex items-center gap-2.5 sm:gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all ${
+                            log ? 'bg-green-600/10 border-green-500/30' : 'bg-black/60 border-white/10 hover:border-white/20'
                           }`}
                         >
-                          <div className="w-16 text-center">
-                            <p className="text-[7px] font-black text-white/30 uppercase leading-none">{row.label}</p>
+                          <div className="w-12 sm:w-16 text-center shrink-0">
+                            <p className="text-[9px] font-black text-white/50 uppercase leading-tight">{row.label}</p>
                             {row.exerciseName && row.exerciseName !== ex.name && (
-                              <p className="text-[6px] font-bold text-white/50 uppercase mt-1 truncate">{row.exerciseName}</p>
+                              <p className="text-[8px] font-bold text-cyan-300/70 uppercase mt-0.5 truncate">{row.exerciseName}</p>
                             )}
                           </div>
                           
-                          <div className="flex-1 flex gap-2">
-                            <div className="relative flex-1">
-                              <div className="flex justify-between items-center -top-3 left-0 absolute right-0">
-                                <span className="text-[7px] text-white/40 uppercase font-black">{displayUnit.toUpperCase()}</span>
+                          <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-3 min-w-0">
+                            <div className="min-w-0">
+                              <div className="flex justify-between items-center gap-1 mb-0.5">
+                                <span className="text-[9px] text-white/50 uppercase font-black">{displayUnit.toUpperCase()}</span>
                                 {(() => {
                                   const enteredVal = progress.performanceData[row.exerciseId]?.weights[row.globalIndex];
                                   if (enteredVal && enteredVal > 0) {
                                     return (
-                                      <span className="text-[7px] text-cyan-400 font-mono font-bold">
+                                      <span className="text-[8px] text-cyan-400 font-mono font-bold truncate">
                                         {getWeightEquivalenceHint(enteredVal, displayUnit)}
                                       </span>
                                     );
                                   }
-                                  const refKg = ghost ? ghost.weight : parseWeightValue(row.targetWeight);
+                                  const refKg = rowGhost ? rowGhost.weight : parseWeightValue(row.targetWeight);
                                   return refKg > 0 ? (
-                                    <span className="text-[7px] text-cyan-400/80 font-mono font-bold">
+                                    <span className="text-[8px] text-cyan-400/75 font-mono font-bold truncate">
                                       {getWeightEquivalenceHint(refKg, 'kg')}
                                     </span>
                                   ) : null;
@@ -899,15 +967,17 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                               </div>
                               <input 
                                 type="number" 
+                                inputMode="decimal"
+                                step="any"
                                 placeholder={(() => {
-                                  const refKg = ghost ? ghost.weight : parseWeightValue(row.targetWeight);
+                                  const refKg = rowGhost ? rowGhost.weight : parseWeightValue(row.targetWeight);
                                   if (!refKg) return '0';
                                   return displayUnit === 'lbs'
                                     ? `${Math.round(refKg * 2.20462 * 10) / 10}`
                                     : `${refKg}`;
                                 })()} 
-                                className={`w-full bg-transparent text-base font-black outline-none border-b border-white/10 focus:border-red-600 transition-colors ${
-                                  ghost ? 'placeholder-white/40' : 'placeholder-white/10'
+                                className={`w-full bg-white/[0.04] rounded-xl px-2.5 py-2 text-base font-black outline-none border border-white/10 focus:border-red-500 transition-colors ${
+                                  rowGhost ? 'placeholder-white/45' : 'placeholder-white/20'
                                 }`} 
                                 value={(() => {
                                   const v = progress.performanceData[row.exerciseId]?.weights[row.globalIndex];
@@ -916,13 +986,14 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                                 onChange={e => updateInput(row.exerciseId, row.globalIndex, 'weights', e.target.value)} 
                               />
                             </div>
-                            <div className="relative w-16">
-                              <span className="absolute -top-3 left-0 text-[6px] text-white/30 uppercase font-black">REPS</span>
+                            <div className="min-w-0">
+                              <span className="text-[9px] text-white/50 uppercase font-black block mb-0.5 text-center">REPS</span>
                               <input 
                                 type="number" 
-                                placeholder={ghost ? `${ghost.reps}` : row.targetReps} 
-                                className={`w-full bg-transparent text-base font-black outline-none border-b border-white/10 text-center focus:border-red-600 transition-colors ${
-                                  ghost ? 'placeholder-white/40' : 'placeholder-white/10'
+                                inputMode="numeric"
+                                placeholder={rowGhost && rowGhost.reps > 0 ? `${rowGhost.reps}` : row.targetReps} 
+                                className={`w-full bg-white/[0.04] rounded-xl px-2 py-2 text-base font-black outline-none border border-white/10 text-center focus:border-red-500 transition-colors ${
+                                  rowGhost ? 'placeholder-white/45' : 'placeholder-white/20'
                                 }`} 
                                 value={progress.performanceData[row.exerciseId]?.reps[row.globalIndex] || ''} 
                                 onChange={e => updateInput(row.exerciseId, row.globalIndex, 'reps', e.target.value)} 
@@ -931,12 +1002,13 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                           </div>
 
                           <button 
+                            type="button"
                             onClick={() => handleLog(ex, row)} 
-                            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
-                              log ? 'bg-green-600 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-95' : 'bg-white/5 hover:bg-white/10 active:scale-90'
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-all ${
+                              log ? 'bg-green-600 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-95' : 'bg-white/10 hover:bg-white/20 active:scale-90'
                             }`}
                           >
-                            {log ? <span className="text-white font-black text-sm">✓</span> : <span className="text-[9px] font-black opacity-40">OK</span>}
+                            {log ? <span className="text-white font-black text-base">✓</span> : <span className="text-[10px] font-black text-white/70">OK</span>}
                           </button>
                         </div>
                       );
