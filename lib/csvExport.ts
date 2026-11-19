@@ -581,3 +581,77 @@ export const parseAthletesFromFile = (rawText: string, existingAthletes: User[] 
 
   return { athletes, format, duplicateCount };
 };
+
+// =========================================================
+// EXPORTACIÓN XML (EJERCICIOS Y RUTINAS)
+// =========================================================
+
+export const downloadXML = (filename: string, xmlContent: string) => {
+  const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+export const exportExercisesToXML = (exercises: Exercise[]) => {
+  const items = exercises
+    .map(ex => {
+      const errors = (ex.commonErrors || []).map(err => `      <error>${escapeXML(err)}</error>`).join('\n');
+      return [
+        `  <ejercicio id="${escapeXML(ex.id)}">`,
+        `    <nombre>${escapeXML(ex.name)}</nombre>`,
+        `    <grupo_muscular>${escapeXML(ex.muscleGroup)}</grupo_muscular>`,
+        `    <video_url>${escapeXML(ex.videoUrl || '')}</video_url>`,
+        `    <tecnica>${escapeXML(ex.technique || '')}</tecnica>`,
+        `    <errores_comunes>`,
+        errors,
+        `    </errores_comunes>`,
+        `  </ejercicio>`
+      ].join('\n');
+    })
+    .join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<kinetix_biblioteca total="${exercises.length}" exportado="${new Date().toISOString()}">\n${items}\n</kinetix_biblioteca>\n`;
+  downloadXML(`kinetix_ejercicios_${new Date().toISOString().split('T')[0]}.xml`, xml);
+};
+
+export const exportWorkoutsToXML = (workouts: Workout[]) => {
+  const items = workouts
+    .map(w => {
+      const blocks = (w.exercises || [])
+        .map(
+          (ex, idx) =>
+            `      <bloque orden="${idx + 1}" exercise_id="${escapeXML(ex.exerciseId)}" metodo="${escapeXML(ex.method || 'standard')}">\n` +
+            `        <nombre>${escapeXML(ex.name)}</nombre>\n` +
+            `        <series>${escapeXML(ex.targetSets)}</series>\n` +
+            `        <repeticiones>${escapeXML(ex.targetReps)}</repeticiones>\n` +
+            `        <carga>${escapeXML(ex.targetLoad || '0')}</carga>\n` +
+            `        <descanso_seg>${escapeXML(ex.targetRest ?? 90)}</descanso_seg>\n` +
+            `        <rir>${escapeXML(ex.targetRir || '')}</rir>\n` +
+            `        <tempo>${escapeXML(ex.tempo || '')}</tempo>\n` +
+            `        <indicacion>${escapeXML(ex.coachCue || '')}</indicacion>\n` +
+            `      </bloque>`
+        )
+        .join('\n');
+
+      return [
+        `  <rutina id="${escapeXML(w.id)}" categoria="${escapeXML(w.category || 'general')}" plantilla="${w.isTemplate !== false}">`,
+        `    <nombre>${escapeXML(w.name)}</nombre>`,
+        `    <titulo_atleta>${escapeXML(w.publicTitle || w.name)}</titulo_atleta>`,
+        `    <dia>${escapeXML(w.day || 1)}</dia>`,
+        `    <bloques>`,
+        blocks,
+        `    </bloques>`,
+        `  </rutina>`
+      ].join('\n');
+    })
+    .join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<kinetix_rutinas total="${workouts.length}" exportado="${new Date().toISOString()}">\n${items}\n</kinetix_rutinas>\n`;
+  downloadXML(`kinetix_rutinas_${new Date().toISOString().split('T')[0]}.xml`, xml);
+};

@@ -18,7 +18,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
     isTemplate: true,
     exercises: [
       {
-        exerciseId: 'ch-1',
+        exerciseId: 'ch-01',
         name: 'Press Horizontal',
         targetSets: 4,
         targetReps: '6, 6, 8, 8',
@@ -34,7 +34,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'bk-1',
+        exerciseId: 'bk-01',
         name: 'Remo Supino',
         targetSets: 4,
         targetReps: '8, 8, 8, 10',
@@ -50,7 +50,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'sh-1',
+        exerciseId: 'sh-01',
         name: 'Press Militar',
         targetSets: 3,
         targetReps: '8, 8, 10',
@@ -66,7 +66,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'bk-2',
+        exerciseId: 'bk-04',
         name: 'Jalón Abierto',
         targetSets: 3,
         targetReps: '10, 10, 12',
@@ -82,7 +82,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'arm-2',
+        exerciseId: 'tri-01',
         name: 'Extensión Cuerda',
         targetSets: 3,
         targetReps: '12, 12, 12',
@@ -108,7 +108,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
     isTemplate: true,
     exercises: [
       {
-        exerciseId: 'leg-1',
+        exerciseId: 'qd-01',
         name: 'Sentadilla (Squat)',
         targetSets: 4,
         targetReps: '6, 6, 8, 8',
@@ -124,7 +124,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'leg-7',
+        exerciseId: 'hm-01',
         name: 'Peso Muerto Rumano',
         targetSets: 4,
         targetReps: '8, 8, 10, 10',
@@ -140,7 +140,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'gl-1',
+        exerciseId: 'gl-01',
         name: 'Hip Thrust',
         targetSets: 4,
         targetReps: '10, 10, 12, 12',
@@ -156,7 +156,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'leg-3',
+        exerciseId: 'gl-05',
         name: 'Sentadilla Búlgara',
         targetSets: 3,
         targetReps: '10, 10, 10',
@@ -172,7 +172,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'leg-8',
+        exerciseId: 'hm-04',
         name: 'Curl Femoral Acostado',
         targetSets: 3,
         targetReps: '12, 12, 12',
@@ -198,7 +198,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
     isTemplate: true,
     exercises: [
       {
-        exerciseId: 'ch-2',
+        exerciseId: 'ch-02',
         name: 'Press Inclinado',
         targetSets: 4,
         targetReps: '8, 8, 10, 10',
@@ -214,7 +214,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'ch-3',
+        exerciseId: 'ch-03',
         name: 'Peck Fly',
         targetSets: 3,
         targetReps: '12, 12, 15',
@@ -230,7 +230,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'sh-2',
+        exerciseId: 'sh-03',
         name: 'Elevación Lateral',
         targetSets: 4,
         targetReps: '12, 12, 15, 15',
@@ -246,7 +246,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'arm-4',
+        exerciseId: 'tri-03',
         name: 'Fondos (Dips)',
         targetSets: 3,
         targetReps: '10, 10, 12',
@@ -272,7 +272,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
     isTemplate: true,
     exercises: [
       {
-        exerciseId: 'bk-3',
+        exerciseId: 'bk-12',
         name: 'Dominadas',
         targetSets: 4,
         targetReps: '8, 8, 8, 8',
@@ -288,7 +288,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'bk-5',
+        exerciseId: 'bk-13',
         name: 'Remo Unilateral',
         targetSets: 3,
         targetReps: '10, 10, 10',
@@ -304,7 +304,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'sh-3',
+        exerciseId: 'sh-06',
         name: 'Face Pull',
         targetSets: 4,
         targetReps: '15, 15, 15, 15',
@@ -320,7 +320,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'arm-1',
+        exerciseId: 'bi-01',
         name: 'Curl Predicador',
         targetSets: 3,
         targetReps: '10, 10, 12',
@@ -346,7 +346,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
     isTemplate: true,
     exercises: [
       {
-        exerciseId: 'hal-3',
+        exerciseId: 'fn-17',
         name: 'Thruster',
         targetSets: 4,
         targetReps: '10, 10, 10, 10',
@@ -362,7 +362,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'fun-2',
+        exerciseId: 'fn-06',
         name: 'Burpees',
         targetSets: 4,
         targetReps: '12, 12, 12, 12',
@@ -377,7 +377,7 @@ export const PRESET_WORKOUT_TEMPLATES: Workout[] = [
         method: 'standard'
       },
       {
-        exerciseId: 'fun-1',
+        exerciseId: 'fn-01',
         name: 'Battle Rope Slams',
         targetSets: 4,
         targetReps: '20, 20, 20, 20',

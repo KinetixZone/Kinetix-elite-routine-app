@@ -26,7 +26,7 @@ const DEFAULT_WORKOUT: Workout = {
   day: 1,
   exercises: [
     {
-      exerciseId: 'hal-1',
+      exerciseId: 'hal-01',
       name: 'Clean & Jerk',
       targetSets: 3,
       targetReps: '3',

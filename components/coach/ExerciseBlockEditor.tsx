@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { WorkoutExercise, TrainingMethod, DropSetNode, SetType } from '../../types/kinetix';
+import { WorkoutExercise, TrainingMethod, DropSetNode, SetType, Exercise } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { getYoutubeEmbedUrl, getYoutubeVideoId } from '../../lib/youtube';
 import { getWeightEquivalenceHint } from '../../lib/units';
@@ -7,12 +7,22 @@ import { getWeightEquivalenceHint } from '../../lib/units';
 interface Props {
   exercise: WorkoutExercise;
   onUpdate: (updated: WorkoutExercise) => void;
+  availableExercises?: Exercise[];
 }
 
-export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => {
+export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, availableExercises }) => {
   const [showVideoModal, setShowVideoModal] = useState<string | null>(null);
   const [showSciConfig, setShowSciConfig] = useState(false);
-  const allExercises = useMemo(() => storageService.getExercises(), []);
+  const allExercises = useMemo(
+    () => (availableExercises && availableExercises.length > 0 ? availableExercises : storageService.getExercises()),
+    [availableExercises, exercise.exerciseId, exercise.pair?.exerciseId]
+  );
+  const resolvedPrimaryId =
+    storageService.resolveExerciseId(exercise.exerciseId, exercise.name, allExercises) || exercise.exerciseId;
+  const resolvedPairId =
+    exercise.pair
+      ? storageService.resolveExerciseId(exercise.pair.exerciseId, exercise.pair.name, allExercises) || exercise.pair.exerciseId
+      : '';
   
   const groupedExercises = useMemo(() => {
     const groups: Record<string, typeof allExercises> = {};
@@ -204,7 +214,7 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                           </button>
                         )}
                     </div>
-                    <select className="w-full bg-transparent text-xl font-black uppercase italic text-white outline-none cursor-pointer" value={exercise.exerciseId} onChange={e => {
+                    <select className="w-full bg-transparent text-xl font-black uppercase italic text-white outline-none cursor-pointer" value={resolvedPrimaryId} onChange={e => {
                         const sel = allExercises.find(x => x.id === e.target.value);
                         if (sel) handleUpdate({ exerciseId: sel.id, name: sel.name, videoUrl: sel.videoUrl, coachCue: exercise.coachCue || sel.technique });
                     }}>
@@ -231,7 +241,7 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate }) => 
                               </button>
                             )}
                         </div>
-                        <select className="w-full bg-transparent text-xl font-black uppercase italic text-blue-400 outline-none cursor-pointer" value={exercise.pair?.exerciseId || ''} onChange={e => {
+                        <select className="w-full bg-transparent text-xl font-black uppercase italic text-blue-400 outline-none cursor-pointer" value={resolvedPairId} onChange={e => {
                             const sel = allExercises.find(x => x.id === e.target.value);
                             if (sel) handleUpdate({ pair: { exerciseId: sel.id, name: sel.name, targetReps: '10', targetLoad: '0', videoUrl: sel.videoUrl } });
                         }}>

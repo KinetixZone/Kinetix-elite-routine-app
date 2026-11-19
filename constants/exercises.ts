@@ -595,7 +595,7 @@ export const EXERCISES_DB: Exercise[] = [
     commonErrors: ['Dejar caer la cadera al suelo sin tensión abdominal'] 
   },
   {
-    id: 'fn-07',
+    id: 'fn-17',
     name: 'Thruster con Mancuernas / Barra',
     muscleGroup: 'Funcional',
     videoUrl: 'https://www.youtube.com/embed/5p7xFs_Hld4',
@@ -603,7 +603,7 @@ export const EXERCISES_DB: Exercise[] = [
     commonErrors: ['Separar la sentadilla del press como dos tiempos', 'Despegar talones']
   },
   {
-    id: 'fn-08',
+    id: 'fn-18',
     name: 'Paseo del Granjero (Farmer Walk)',
     muscleGroup: 'Funcional',
     videoUrl: 'https://www.youtube.com/embed/0cT1WmDBk2w',
@@ -869,6 +869,22 @@ export const EXERCISES_DB: Exercise[] = [
     videoUrl: 'https://youtube.com/shorts/Ks3yr_wl8WU?si=eilaLUFNwpvUh5w7',
     technique: 'Agarre en V o estrecho. Conducir los codos pegados al cuerpo hacia las costillas para máximo reclutamiento del dorsal.',
     commonErrors: ['Inclinarse hacia atrás más de 30° convirtiéndolo en un remo', 'Despegar los muslos del cojín']
+  },
+  {
+    id: 'bk-12',
+    name: 'Dominadas (Pull-Ups)',
+    muscleGroup: 'Espalda',
+    videoUrl: 'https://www.youtube.com/embed/9S2yWQVeQJ8',
+    technique: 'Agarre prono algo más ancho que los hombros. Depresión escapular inicial, llevar el pecho hacia la barra sin balanceo.',
+    commonErrors: ['Balancear piernas (kipping) sin control', 'Rango incompleto arriba o abajo']
+  },
+  {
+    id: 'bk-13',
+    name: 'Remo Unilateral con Mancuerna',
+    muscleGroup: 'Espalda',
+    videoUrl: 'https://www.youtube.com/embed/N_KrUuUsg9k',
+    technique: 'Rodilla y mano apoyadas en banco plano, columna neutra. Conducir la mancuerna hacia la cadera pegando el codo al torso.',
+    commonErrors: ['Rotar el torso al subir la mancuerna', 'Tirar con el brazo en lugar del dorsal']
   },
   {
     id: 'sh-09',

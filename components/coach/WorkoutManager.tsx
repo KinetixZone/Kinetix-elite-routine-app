@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Workout, WorkoutExercise, User } from '../../types/kinetix';
+import { Workout, WorkoutExercise, User, Exercise } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
 import { ExerciseLibrary } from '../admin/ExerciseLibrary';
-import { exportWorkoutsToCSV, downloadWorkoutsTemplateCSV, parseWorkoutsFromCSV } from '../../lib/csvExport';
+import { exportWorkoutsToCSV, downloadWorkoutsTemplateCSV, parseWorkoutsFromCSV, exportWorkoutsToXML } from '../../lib/csvExport';
 
 export const WorkoutManager: React.FC = () => {
   const [view, setView] = useState<'list' | 'editor' | 'assign' | 'meso' | 'library'>('list');
   const [templates, setTemplates] = useState<Workout[]>([]);
+  const [libraryExercises, setLibraryExercises] = useState<Exercise[]>(() => storageService.getExercises());
   const [listUndoStack, setListUndoStack] = useState<Workout[][]>([]);
   const [editingTemplate, setEditingTemplate] = useState<Workout | null>(null);
   const [editorUndoStack, setEditorUndoStack] = useState<Workout[]>([]);
@@ -43,15 +44,17 @@ export const WorkoutManager: React.FC = () => {
   useEffect(() => { refreshData(); }, []);
 
   const refreshData = async () => {
-    const [all, cloudAthletes] = await Promise.all([
+    const [all, cloudAthletes, syncedExercises] = await Promise.all([
       storageService.getTemplates(undefined, {
         onRevalidate: (fresh) => setTemplates(fresh.filter(t => t.isTemplate !== false))
       }),
-      storageService.syncAthletesFromCloud()
+      storageService.syncAthletesFromCloud(),
+      storageService.syncExercisesFromCloud()
     ]);
     setTemplates(all.filter(t => t.isTemplate !== false));
     setAthletes(cloudAthletes.filter(a => a.role !== 'owner'));
-    setExerciseCount(storageService.getExercises().length);
+    setLibraryExercises(syncedExercises);
+    setExerciseCount(syncedExercises.length);
   };
 
   const handlePrepareArchive = async () => {
@@ -262,7 +265,7 @@ export const WorkoutManager: React.FC = () => {
   const addBlock = (exerciseId?: string) => {
     if (!editingTemplate) return;
     const allExs = storageService.getExercises();
-    const chosen = (exerciseId ? allExs.find(e => e.id === exerciseId) : allExs[0]) || allExs[0] || { id: 'ex-1', name: 'Press Horizontal', muscleGroup: 'Pecho', videoUrl: '', technique: '' };
+    const chosen = (exerciseId ? allExs.find(e => e.id === exerciseId) : allExs[0]) || allExs[0] || { id: 'ch-01', name: 'Press de Banca Plano con Barra', muscleGroup: 'Pecho', videoUrl: '', technique: '' };
     const newEx: WorkoutExercise = {
         exerciseId: chosen.id,
         name: chosen.name,
@@ -334,6 +337,15 @@ export const WorkoutManager: React.FC = () => {
                   className="px-4 py-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
                 >
                   ⬇ Exportar Excel
+                </button>
+                <button
+                  onClick={() => {
+                    exportWorkoutsToXML(templates);
+                    notify('📦 Rutinas exportadas en formato XML.');
+                  }}
+                  className="px-4 py-3 rounded-xl bg-violet-500/15 hover:bg-violet-500 text-violet-300 hover:text-black border border-violet-500/40 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+                >
+                  ⬇ Exportar XML
                 </button>
                 <button
                   onClick={handlePrepareArchive}
@@ -646,7 +658,7 @@ export const WorkoutManager: React.FC = () => {
                              }}
                            >
                              <option value="">+ Elegir ejercicio...</option>
-                             {storageService.getExercises()
+                             {libraryExercises
                                .filter(ex => {
                                  const q = editorExSearch.trim().toLowerCase();
                                  if (!q) return true;
@@ -660,6 +672,13 @@ export const WorkoutManager: React.FC = () => {
                            </select>
                            <button type="button" onClick={() => addBlock()} className="bg-red-600 hover:bg-red-500 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all min-h-[44px]">
                                + Bloque Rápido
+                           </button>
+                           <button
+                             type="button"
+                             onClick={() => setView('library')}
+                             className="bg-white/5 hover:bg-white/15 border border-white/15 text-white/80 hover:text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+                           >
+                             📚 Biblioteca
                            </button>
                        </div>
                    </div>
@@ -682,7 +701,8 @@ export const WorkoutManager: React.FC = () => {
                                    </button>
                                </div>
                                <ExerciseBlockEditor 
-                                   exercise={ex} 
+                                   exercise={ex}
+                                   availableExercises={libraryExercises}
                                    onUpdate={(updated) => {
                                        const newExs = [...editingTemplate.exercises];
                                        newExs[idx] = updated;

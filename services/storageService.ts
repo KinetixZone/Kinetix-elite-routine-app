@@ -20,7 +20,65 @@ const KEYS = {
   AI_PROMPT_HISTORY: 'kinetix_ai_prompts',
   AI_BLUEPRINTS: 'kinetix_ai_blueprints',
   SYSTEM_CONFIG: 'kinetix_system_config',
-  BRANDING: 'kinetix_branding'
+  BRANDING: 'kinetix_branding',
+  DELETED_EXERCISES: 'kinetix_deleted_exercises'
+};
+
+const SYS_BRANDING_ROW_ID = '__kinetix_sys_branding__';
+const SYS_EXERCISES_ROW_ID = '__kinetix_sys_exercises__';
+
+export const LEGACY_EXERCISE_ID_MAP: Record<string, string> = {
+  'ch-1': 'ch-01',
+  'ch-2': 'ch-02',
+  'ch-3': 'ch-03',
+  'ch-5': 'ch-05',
+  'ch-6': 'ch-06',
+  'bk-1': 'bk-01',
+  'bk-2': 'bk-04',
+  'bk-3': 'bk-12',
+  'bk-5': 'bk-13',
+  'sh-1': 'sh-01',
+  'sh-2': 'sh-03',
+  'sh-3': 'sh-06',
+  'arm-1': 'bi-01',
+  'arm-2': 'tri-01',
+  'arm-4': 'tri-03',
+  'leg-1': 'qd-01',
+  'leg-3': 'gl-05',
+  'leg-7': 'hm-01',
+  'leg-8': 'hm-04',
+  'gl-1': 'gl-01',
+  'hal-1': 'hal-01',
+  'hal-3': 'fn-17',
+  'fun-1': 'fn-01',
+  'fun-2': 'fn-06',
+  'ex-1': 'ch-01'
+};
+
+const LEGACY_EXERCISE_NAME_MAP: Record<string, string> = {
+  'press horizontal': 'ch-01',
+  'crossover polea': 'ch-05',
+  'press inclinado': 'ch-02',
+  'peck fly': 'ch-03',
+  'remo supino': 'bk-01',
+  'jalon abierto': 'bk-04',
+  'dominadas': 'bk-12',
+  'remo unilateral': 'bk-13',
+  'press militar': 'sh-01',
+  'elevacion lateral': 'sh-03',
+  'face pull': 'sh-06',
+  'curl predicador': 'bi-01',
+  'extension cuerda': 'tri-01',
+  'fondos (dips)': 'tri-03',
+  'fondos': 'tri-03',
+  'sentadilla (squat)': 'qd-01',
+  'sentadilla bulgara': 'gl-05',
+  'peso muerto rumano': 'hm-01',
+  'curl femoral acostado': 'hm-04',
+  'hip thrust': 'gl-01',
+  'thruster': 'fn-17',
+  'burpees': 'fn-01',
+  'battle rope slams': 'fn-06'
 };
 
 export interface AiBlueprint {
@@ -97,6 +155,9 @@ export interface IntegrityScanReport {
   cleanableCalendarIds: string[];
   cleanableCloudLogIds: string[];
   cleanableLocalKeys: string[];
+  repairableTemplates: Workout[];
+  repairableCloudLogs: Array<{ id: string; exercise_id: string }>;
+  repairableCount: number;
 }
 
 export interface IntegrityCleanResult {
@@ -105,6 +166,9 @@ export interface IntegrityCleanResult {
   removedCloudLogs: number;
   removedLocalLogs: number;
   removedLocalKeys: number;
+  repairedTemplates: number;
+  repairedCloudLogs: number;
+  repairedLocalLogs: number;
   cloudSynced: boolean;
 }
 
@@ -482,17 +546,62 @@ class StorageService {
     return { ok: false, error: 'Usuario no encontrado.' };
   }
 
+  private normalizeExerciseLabel(text?: string): string {
+    return (text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  resolveExerciseId(exId?: string, exName?: string, catalog?: Exercise[]): string | undefined {
+    const list = catalog || this.getExercises();
+    const idSet = new Set(list.map(e => e.id));
+    if (exId && idSet.has(exId)) return exId;
+    if (exId && LEGACY_EXERCISE_ID_MAP[exId] && idSet.has(LEGACY_EXERCISE_ID_MAP[exId])) {
+      return LEGACY_EXERCISE_ID_MAP[exId];
+    }
+    const cleanName = this.normalizeExerciseLabel(exName);
+    if (cleanName) {
+      if (LEGACY_EXERCISE_NAME_MAP[cleanName] && idSet.has(LEGACY_EXERCISE_NAME_MAP[cleanName])) {
+        return LEGACY_EXERCISE_NAME_MAP[cleanName];
+      }
+      const exact = list.find(e => this.normalizeExerciseLabel(e.name) === cleanName);
+      if (exact) return exact.id;
+      const partial = list.find(e => {
+        const libName = this.normalizeExerciseLabel(e.name);
+        return libName.includes(cleanName) || cleanName.includes(libName);
+      });
+      if (partial) return partial.id;
+    }
+    return undefined;
+  }
+
+  private getDeletedExerciseIds(): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(KEYS.DELETED_EXERCISES) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   getExercises(): Exercise[] {
+    const deletedSet = new Set(this.getDeletedExerciseIds());
     const data = localStorage.getItem(KEYS.EXERCISE_LIBRARY);
     if (!data) {
-      localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(EXERCISES_DB));
-      return EXERCISES_DB;
+      const initial = EXERCISES_DB.filter(e => !deletedSet.has(e.id));
+      localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(initial));
+      return initial;
     }
     try {
       const parsed: Exercise[] = JSON.parse(data);
-      const existingMap = new Map(parsed.map(e => [e.id, e]));
+      const existingMap = new Map(
+        parsed.filter(e => e && e.id && !deletedSet.has(e.id)).map(e => [e.id, e])
+      );
       let hasChanges = false;
       EXERCISES_DB.forEach(dbEx => {
+        if (deletedSet.has(dbEx.id)) return;
         if (!existingMap.has(dbEx.id)) {
           existingMap.set(dbEx.id, dbEx);
           hasChanges = true;
@@ -509,12 +618,82 @@ class StorageService {
         localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(merged));
       }
       return merged;
-    } catch (e) {
-      return EXERCISES_DB;
+    } catch {
+      return EXERCISES_DB.filter(e => !deletedSet.has(e.id));
     }
   }
 
-  saveExercises(exercises: Exercise[]) { localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(exercises)); }
+  saveExercises(exercises: Exercise[], deletedIdsOverride?: string[]) {
+    localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(exercises));
+    const deletedIds = deletedIdsOverride ?? this.getDeletedExerciseIds();
+    if (deletedIdsOverride !== undefined) {
+      localStorage.setItem(KEYS.DELETED_EXERCISES, JSON.stringify(deletedIds));
+    }
+    if (isSupabaseConfigured) {
+      void Promise.resolve(
+        supabase.from('kinetix_templates').upsert({
+          id: SYS_EXERCISES_ROW_ID,
+          name: '__SYS_EXERCISES__',
+          publicTitle: '__SYS__',
+          category: 'general',
+          day: 1,
+          isTemplate: false,
+          exercises: [{ exercises, deletedIds }],
+          assignedTo: null,
+          scheduledDate: null
+        })
+      ).catch(() => {});
+    }
+  }
+
+  async syncExercisesFromCloud(): Promise<Exercise[]> {
+    const localList = this.getExercises();
+    if (!isSupabaseConfigured) return localList;
+    try {
+      const { data, error } = await supabase
+        .from('kinetix_templates')
+        .select('exercises')
+        .eq('id', SYS_EXERCISES_ROW_ID)
+        .maybeSingle();
+      const packet = !error && Array.isArray(data?.exercises) ? (data.exercises[0] as any) : null;
+      if (!packet || !Array.isArray(packet.exercises)) return localList;
+
+      const mergedDeleted = Array.from(
+        new Set([
+          ...this.getDeletedExerciseIds(),
+          ...(Array.isArray(packet.deletedIds) ? packet.deletedIds : [])
+        ])
+      );
+      const deletedSet = new Set(mergedDeleted);
+      const mergedMap = new Map<string, Exercise>();
+      EXERCISES_DB.forEach(e => {
+        if (!deletedSet.has(e.id)) mergedMap.set(e.id, e);
+      });
+      localList.forEach(e => {
+        if (!deletedSet.has(e.id)) mergedMap.set(e.id, e);
+      });
+      (packet.exercises as Exercise[]).forEach(e => {
+        if (e?.id && !deletedSet.has(e.id)) mergedMap.set(e.id, e);
+      });
+      const merged = Array.from(mergedMap.values());
+      localStorage.setItem(KEYS.DELETED_EXERCISES, JSON.stringify(mergedDeleted));
+      localStorage.setItem(KEYS.EXERCISE_LIBRARY, JSON.stringify(merged));
+      return merged;
+    } catch {
+      return localList;
+    }
+  }
+
+  restoreBaseExercises(): Exercise[] {
+    localStorage.removeItem(KEYS.DELETED_EXERCISES);
+    const current = this.getExercises();
+    const map = new Map<string, Exercise>();
+    EXERCISES_DB.forEach(e => map.set(e.id, e));
+    current.forEach(e => map.set(e.id, e));
+    const merged = Array.from(map.values());
+    this.saveExercises(merged, []);
+    return merged;
+  }
 
   private getDeletedTemplateIds(): string[] {
     try {
@@ -603,7 +782,7 @@ class StorageService {
       if (!deletedIds.has(p.id)) map.set(p.id, p);
     });
     localTemplates.forEach(t => {
-      if (t.id === '__kinetix_sys_branding__' || deletedIds.has(t.id)) return;
+      if (t.id === SYS_BRANDING_ROW_ID || t.id === SYS_EXERCISES_ROW_ID || deletedIds.has(t.id)) return;
       const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
       if (keepInstance) map.set(t.id, t);
     });
@@ -659,10 +838,10 @@ class StorageService {
         if (!deletedIds.has(p.id)) mergedMap.set(p.id, p);
       });
       localScoped.forEach(t => {
-        if (t.id !== '__kinetix_sys_branding__' && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
+        if (t.id !== SYS_BRANDING_ROW_ID && t.id !== SYS_EXERCISES_ROW_ID && !deletedIds.has(t.id)) mergedMap.set(t.id, t);
       });
       cloudTemplates.forEach(t => {
-        if (t.id === '__kinetix_sys_branding__' || deletedIds.has(t.id)) return;
+        if (t.id === SYS_BRANDING_ROW_ID || t.id === SYS_EXERCISES_ROW_ID || deletedIds.has(t.id)) return;
         const keepInstance = t.isTemplate !== false || !t.scheduledDate || t.scheduledDate >= cutoff30d;
         if (keepInstance) mergedMap.set(t.id, t);
       });
@@ -1669,11 +1848,112 @@ class StorageService {
           localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(parsedLogs.slice(0, 250)));
         }
       }
+      // Auto-reparar IDs de ejercicios heredados (ej. ch-1 -> ch-01) en rutinas e historial locales
+      this.repairLocalLegacyExerciseRefs();
     } catch {
       // Ignore cleanup errors
     }
 
     return { removedKeys, removedTemplates };
+  }
+
+  private repairTemplateExerciseRefs(tpl: Workout, catalog: Exercise[]): { workout: Workout; changed: boolean } {
+    const idSet = new Set(catalog.map(e => e.id));
+    let changed = false;
+    const exList = Array.isArray(tpl.exercises) ? tpl.exercises : [];
+    const repairedExercises = exList.map(block => {
+      if (!block) return block;
+      let nextBlock = { ...block };
+      if (block.exerciseId && !idSet.has(block.exerciseId)) {
+        const resolved = this.resolveExerciseId(block.exerciseId, block.name, catalog);
+        if (resolved) {
+          nextBlock.exerciseId = resolved;
+          changed = true;
+        }
+      }
+      if (block.pair?.exerciseId && !idSet.has(block.pair.exerciseId)) {
+        const resolvedPair = this.resolveExerciseId(block.pair.exerciseId, block.pair.name, catalog);
+        if (resolvedPair) {
+          nextBlock.pair = { ...block.pair, exerciseId: resolvedPair };
+          changed = true;
+        }
+      }
+      if (Array.isArray(block.supersetChain)) {
+        let chainChanged = false;
+        const nextChain = block.supersetChain.map(item => {
+          if (item?.exerciseId && !idSet.has(item.exerciseId)) {
+            const resolvedItem = this.resolveExerciseId(item.exerciseId, item.name, catalog);
+            if (resolvedItem) {
+              chainChanged = true;
+              return { ...item, exerciseId: resolvedItem };
+            }
+          }
+          return item;
+        });
+        if (chainChanged) {
+          nextBlock.supersetChain = nextChain;
+          changed = true;
+        }
+      }
+      return nextBlock;
+    });
+    return {
+      workout: changed ? { ...tpl, exercises: repairedExercises } : tpl,
+      changed
+    };
+  }
+
+  repairLocalLegacyExerciseRefs(): { repairedTemplates: number; repairedLocalLogs: number } {
+    let repairedTemplates = 0;
+    let repairedLocalLogs = 0;
+    const catalog = this.getExercises();
+    const idSet = new Set(catalog.map(e => e.id));
+
+    try {
+      const rawTpls = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
+      if (rawTpls) {
+        const parsed: Workout[] = JSON.parse(rawTpls);
+        if (Array.isArray(parsed)) {
+          const next = parsed.map(t => {
+            if (!t || t.id === SYS_BRANDING_ROW_ID || t.id === SYS_EXERCISES_ROW_ID) return t;
+            const res = this.repairTemplateExerciseRefs(t, catalog);
+            if (res.changed) repairedTemplates++;
+            return res.workout;
+          });
+          if (repairedTemplates > 0) {
+            localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(next));
+          }
+        }
+      }
+
+      const rawLogs = localStorage.getItem(KEYS.LOG_HISTORY);
+      if (rawLogs) {
+        const parsedLogs: WorkoutLog[] = JSON.parse(rawLogs);
+        if (Array.isArray(parsedLogs)) {
+          const nextLogs = parsedLogs.map(l => {
+            if (
+              l?.exerciseId &&
+              l.exerciseId !== 'kinetix-class-log' &&
+              l.exerciseId !== 'kinetix-session-done' &&
+              l.exerciseId !== 'kinetix-session-reopen' &&
+              !idSet.has(l.exerciseId)
+            ) {
+              const resolved = this.resolveExerciseId(l.exerciseId, undefined, catalog);
+              if (resolved) {
+                repairedLocalLogs++;
+                return { ...l, exerciseId: resolved };
+              }
+            }
+            return l;
+          });
+          if (repairedLocalLogs > 0) {
+            localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify(nextLogs));
+          }
+        }
+      }
+    } catch {}
+
+    return { repairedTemplates, repairedLocalLogs };
   }
 
   async runIntegrityScan(): Promise<IntegrityScanReport> {
@@ -1734,11 +2014,14 @@ class StorageService {
     const cleanableCalendarIds = new Set<string>();
     const cleanableCloudLogIds = new Set<string>();
     const cleanableLocalKeys: string[] = [];
+    const repairableTemplatesMap = new Map<string, Workout>();
+    const repairableCloudLogs: Array<{ id: string; exercise_id: string }> = [];
 
     let trashSessionsCount = 0;
     let orphanExercisesCount = 0;
     let orphanCalendarCount = 0;
     let stale30dCount = 0;
+    let repairableCount = 0;
 
     // 1. Llaves locales obsoletas en localStorage
     for (let i = 0; i < localStorage.length; i++) {
@@ -1796,7 +2079,7 @@ class StorageService {
     ]);
 
     mergedTemplates.forEach(({ tpl, source }) => {
-      if (tpl.id === '__kinetix_sys_branding__') return;
+      if (tpl.id === SYS_BRANDING_ROW_ID || tpl.id === SYS_EXERCISES_ROW_ID) return;
       const exList = Array.isArray(tpl.exercises) ? tpl.exercises : [];
       const schedDate = tpl.scheduledDate ? String(tpl.scheduledDate).slice(0, 10) : '';
       const hasActivityOnDate = !!schedDate && activeLogDayKeys.has(`${tpl.assignedTo || ''}|${schedDate}`);
@@ -1827,18 +2110,33 @@ class StorageService {
         }
       }
 
+      let tplNeedsRepair = false;
       exList.forEach(block => {
         if (block?.exerciseId && !exerciseIdSet.has(block.exerciseId)) {
+          const resolvedId = this.resolveExerciseId(block.exerciseId, block.name, exercises);
           orphanExercisesCount++;
+          if (resolvedId) {
+            repairableCount++;
+            tplNeedsRepair = true;
+          }
           findings.push({
             id: `tpl-ex-${tpl.id}-${block.exerciseId}`,
             source,
             category: 'orphan_exercise',
             label: block.name || block.exerciseId,
-            detail: `Ejercicio huérfano dentro de "${tpl.name}" (no existe en biblioteca actual).`
+            detail: resolvedId
+              ? `ID legado "${block.exerciseId}" en "${tpl.name}" (auto-reparable → ${resolvedId}).`
+              : `Ejercicio huérfano dentro de "${tpl.name}" (no existe en biblioteca actual).`
           });
         }
       });
+
+      if (tplNeedsRepair && source === 'Supabase') {
+        const repaired = this.repairTemplateExerciseRefs(tpl, exercises);
+        if (repaired.changed) {
+          repairableTemplatesMap.set(tpl.id, repaired.workout);
+        }
+      }
     });
 
     // 3. Auditar eventos de calendario (localStorage + Supabase)
@@ -1939,6 +2237,13 @@ class StorageService {
           date: tsDay
         });
       } else if (exId && exId !== 'kinetix-class-log' && !exerciseIdSet.has(exId)) {
+        const resolvedId = this.resolveExerciseId(exId, undefined, exercises);
+        if (resolvedId) {
+          repairableCount++;
+          if (source === 'Supabase' && row.id) {
+            repairableCloudLogs.push({ id: String(row.id), exercise_id: resolvedId });
+          }
+        }
         const sig = `${source}:${exId}`;
         if (!seenOrphanLogKeys.has(sig)) {
           seenOrphanLogKeys.add(sig);
@@ -1948,7 +2253,9 @@ class StorageService {
             source,
             category: 'orphan_exercise',
             label: `ID de ejercicio huérfano: ${exId}`,
-            detail: `Existen logs históricos referenciando este ID fuera de la biblioteca.`,
+            detail: resolvedId
+              ? `Logs históricos usan ID legado "${exId}" (auto-reparable → ${resolvedId}).`
+              : `Existen logs históricos referenciando este ID fuera de la biblioteca.`,
             date: tsDay
           });
         }
@@ -1985,7 +2292,10 @@ class StorageService {
       cleanableTemplateIds: Array.from(cleanableTemplateIds),
       cleanableCalendarIds: Array.from(cleanableCalendarIds),
       cleanableCloudLogIds: Array.from(cleanableCloudLogIds),
-      cleanableLocalKeys
+      cleanableLocalKeys,
+      repairableTemplates: Array.from(repairableTemplatesMap.values()),
+      repairableCloudLogs,
+      repairableCount
     };
   }
 
@@ -1995,6 +2305,9 @@ class StorageService {
     let removedCloudLogs = 0;
     let removedLocalLogs = 0;
     let removedLocalKeys = 0;
+    let repairedTemplates = 0;
+    let repairedCloudLogs = 0;
+    let repairedLocalLogs = 0;
     let cloudSynced = false;
 
     // 1. Limpiar llaves obsoletas locales
@@ -2016,6 +2329,11 @@ class StorageService {
         this.writeTemplatesCacheMeta('staff');
       } catch {}
     }
+
+    // 2b. Auto-reparar referencias de ejercicios legados (ej. ch-1 -> ch-01) en caché y logs locales
+    const localRepair = this.repairLocalLegacyExerciseRefs();
+    repairedTemplates += localRepair.repairedTemplates;
+    repairedLocalLogs += localRepair.repairedLocalLogs;
 
     // 3. Limpiar eventos de calendario huérfanos o >30d sin actividad en localStorage
     const calSet = new Set(report.cleanableCalendarIds);
@@ -2049,7 +2367,7 @@ class StorageService {
       }
     } catch {}
 
-    // 5. Limpiar en Supabase los mismos registros detectados (en lotes seguros de 50)
+    // 5. Limpiar y reparar en Supabase los mismos registros detectados (en lotes seguros de 50)
     if (isSupabaseConfigured) {
       const chunkArray = <T,>(arr: T[], size = 50): T[][] => {
         const out: T[][] = [];
@@ -2069,6 +2387,25 @@ class StorageService {
           const { error } = await supabase.from('workout_logs').delete().in('id', chunk);
           if (!error) removedCloudLogs += chunk.length;
         }
+        for (const tpl of report.repairableTemplates || []) {
+          const { error } = await supabase.from('kinetix_templates').upsert(this.toCloudTemplatePayload(tpl));
+          if (!error) repairedTemplates++;
+        }
+        const logsByTargetId = new Map<string, string[]>();
+        (report.repairableCloudLogs || []).forEach(item => {
+          const arr = logsByTargetId.get(item.exercise_id) || [];
+          arr.push(item.id);
+          logsByTargetId.set(item.exercise_id, arr);
+        });
+        for (const [targetExId, ids] of logsByTargetId.entries()) {
+          for (const chunk of chunkArray(ids)) {
+            const { error } = await supabase.from('workout_logs').update({ exercise_id: targetExId }).in('id', chunk);
+            if (!error) repairedCloudLogs += chunk.length;
+          }
+        }
+        if ((report.repairableTemplates || []).length > 0) {
+          await this.syncTemplatesFromCloud();
+        }
         cloudSynced = true;
       } catch (e) {
         console.warn('Error limpiando registros en Supabase:', e);
@@ -2081,6 +2418,9 @@ class StorageService {
       removedCloudLogs,
       removedLocalLogs,
       removedLocalKeys,
+      repairedTemplates,
+      repairedCloudLogs,
+      repairedLocalLogs,
       cloudSynced
     };
   }
@@ -2112,16 +2452,20 @@ class StorageService {
   }
 
   addOrUpdateExercise(exercise: Exercise) {
+    const deletedIds = this.getDeletedExerciseIds().filter(d => d !== exercise.id);
+    localStorage.setItem(KEYS.DELETED_EXERCISES, JSON.stringify(deletedIds));
     const list = this.getExercises();
     const idx = list.findIndex(e => e.id === exercise.id);
     if (idx >= 0) list[idx] = exercise;
     else list.push(exercise);
-    this.saveExercises(list);
+    this.saveExercises(list, deletedIds);
   }
 
   deleteExercise(id: string) {
+    const nextDeleted = Array.from(new Set([...this.getDeletedExerciseIds(), id]));
+    localStorage.setItem(KEYS.DELETED_EXERCISES, JSON.stringify(nextDeleted));
     const list = this.getExercises().filter(e => e.id !== id);
-    this.saveExercises(list);
+    this.saveExercises(list, nextDeleted);
   }
   
   getAthleteInsights(): AthleteInsight[] {

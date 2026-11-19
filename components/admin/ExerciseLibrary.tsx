@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Exercise } from '../../types/kinetix';
 import { storageService } from '../../services/storageService';
 import { getYoutubeEmbedUrl, getYoutubeVideoId } from '../../lib/youtube';
-import { exportExercisesToCSV, downloadExercisesTemplateCSV, parseExercisesFromCSV } from '../../lib/csvExport';
+import { exportExercisesToCSV, downloadExercisesTemplateCSV, parseExercisesFromCSV, exportExercisesToXML } from '../../lib/csvExport';
 
 // --- SUB-COMPONENT: VIDEO MODAL ---
 const ExerciseVideoModal: React.FC<{ url: string; onClose: () => void }> = ({ url, onClose }) => {
@@ -142,6 +142,7 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
 
   useEffect(() => {
     setExercises(storageService.getExercises());
+    storageService.syncExercisesFromCloud().then(setExercises);
   }, []);
 
   const showToast = (msg: string) => {
@@ -181,7 +182,7 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
     storageService.deleteExercise(id);
     setExercises(storageService.getExercises());
     setConfirmDeleteId(null);
-    showToast(`🗑 "${target?.name || 'Ejercicio'}" eliminado. Puedes usar Deshacer.`);
+    showToast(`🗑 "${target?.name || 'Ejercicio'}" eliminado en local y nube. Usa Deshacer si fue un error.`);
   };
 
   const handleSave = (ex: Exercise) => {
@@ -189,7 +190,7 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
     storageService.addOrUpdateExercise(ex);
     setExercises(storageService.getExercises());
     setEditingEx(null);
-    showToast(`✅ "${ex.name}" guardado correctamente.`);
+    showToast(`✅ "${ex.name}" guardado y sincronizado en la nube.`);
   };
 
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,6 +265,19 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
              )}
 
              <button 
+               onClick={() => {
+                 pushUndoSnapshot(exercises);
+                 const restored = storageService.restoreBaseExercises();
+                 setExercises(restored);
+                 showToast('🔄 Ejercicios base Kinetix restaurados sin borrar tus propios ejercicios.');
+               }}
+               className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/15 text-white/75 hover:text-white border border-white/15 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+               title="Restaurar ejercicios base eliminados"
+             >
+               🔄 Restaurar Base
+             </button>
+
+             <button 
                onClick={() => downloadExercisesTemplateCSV()}
                className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/10 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
                title="Descargar plantilla CSV para llenar en Excel"
@@ -293,6 +307,16 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
                className="px-4 py-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
              >
                ⬇ Exportar Excel
+             </button>
+
+             <button 
+               onClick={() => {
+                 exportExercisesToXML(exercises);
+                 showToast('📦 Catálogo exportado en formato XML.');
+               }}
+               className="px-4 py-3 rounded-xl bg-violet-500/15 hover:bg-violet-500 text-violet-300 hover:text-black border border-violet-500/40 text-[10px] font-black uppercase tracking-wider transition-all min-h-[44px]"
+             >
+               ⬇ Exportar XML
              </button>
 
              <button 

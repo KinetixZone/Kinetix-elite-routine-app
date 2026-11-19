@@ -87,18 +87,23 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
           const refreshed = await storageService.runIntegrityScan();
           setIntegrityReport(refreshed);
           setStorageTick(t => t + 1);
+          const repairedTotal =
+              (res.repairedTemplates || 0) +
+              (res.repairedCloudLogs || 0) +
+              (res.repairedLocalLogs || 0);
           const totalCleaned =
               res.removedTemplates +
               res.removedCalendarEvents +
               res.removedCloudLogs +
               res.removedLocalLogs +
-              res.removedLocalKeys;
+              res.removedLocalKeys +
+              repairedTotal;
           setIntegrityLogs(prev => [
               ...prev.slice(-10),
-              `[${new Date().toLocaleTimeString()}] LIMPIEZA_OK: ${totalCleaned} registros purgados (${res.cloudSynced ? 'Local + Supabase' : 'Local'})`
+              `[${new Date().toLocaleTimeString()}] LIMPIEZA_OK: ${totalCleaned} registros purgados/reparados (${res.cloudSynced ? 'Local + Supabase' : 'Local'})`
           ]);
           notifyAdmin(
-              `🧹 Limpieza completada: ${res.removedTemplates} instancias/borradores, ${res.removedCalendarEvents} eventos >30d/huérfanos, ${res.removedCloudLogs + res.removedLocalLogs} logs vacíos y ${res.removedLocalKeys} llaves locales eliminadas.`,
+              `🧹 Integridad completada: ${repairedTotal} IDs huérfanos reparados, ${res.removedTemplates} instancias/borradores, ${res.removedCalendarEvents} eventos >30d, ${res.removedCloudLogs + res.removedLocalLogs} logs vacíos y ${res.removedLocalKeys} llaves locales.`,
               true
           );
       } catch (e: any) {
@@ -815,14 +820,14 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                     {isScanningIntegrity ? 'Escaneando...' : '🔍 Escanear Integridad'}
                                 </button>
 
-                                {integrityReport && (integrityReport.cleanableTemplateIds.length + integrityReport.cleanableCalendarIds.length + integrityReport.cleanableCloudLogIds.length + integrityReport.cleanableLocalKeys.length + integrityReport.trashSessionsCount > 0) && (
+                                {integrityReport && (integrityReport.cleanableTemplateIds.length + integrityReport.cleanableCalendarIds.length + integrityReport.cleanableCloudLogIds.length + integrityReport.cleanableLocalKeys.length + integrityReport.trashSessionsCount + (integrityReport.repairableCount || 0) > 0) && (
                                     <button
                                         type="button"
                                         onClick={handleCleanIntegrity}
                                         disabled={isCleaningIntegrity || isScanningIntegrity}
                                         className="px-6 py-3.5 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(220,38,38,0.35)]"
                                     >
-                                        {isCleaningIntegrity ? 'Limpiando...' : '🧹 Limpiar >30 Días y Basura'}
+                                        {isCleaningIntegrity ? 'Reparando y Limpiando...' : '🧹 Reparar Huérfanos y Limpiar >30d'}
                                     </button>
                                 )}
                             </div>
@@ -893,10 +898,10 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                 {lastCleanResult && (
                                     <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 flex flex-wrap items-center justify-between gap-2">
                                         <span className="font-black uppercase tracking-wide">
-                                            ✅ Última limpieza automática ({lastCleanResult.cloudSynced ? 'Local + Supabase' : 'Local'}):
+                                            ✅ Última reparación y limpieza ({lastCleanResult.cloudSynced ? 'Local + Supabase' : 'Local'}):
                                         </span>
                                         <span className="font-mono text-[11px]">
-                                            {lastCleanResult.removedTemplates} rutinas/instancias · {lastCleanResult.removedCalendarEvents} eventos · {lastCleanResult.removedCloudLogs + lastCleanResult.removedLocalLogs} logs vacíos · {lastCleanResult.removedLocalKeys} llaves
+                                            {(lastCleanResult.repairedTemplates || 0) + (lastCleanResult.repairedCloudLogs || 0) + (lastCleanResult.repairedLocalLogs || 0)} IDs reparados · {lastCleanResult.removedTemplates} rutinas/instancias · {lastCleanResult.removedCalendarEvents} eventos · {lastCleanResult.removedCloudLogs + lastCleanResult.removedLocalLogs} logs vacíos · {lastCleanResult.removedLocalKeys} llaves
                                         </span>
                                     </div>
                                 )}
