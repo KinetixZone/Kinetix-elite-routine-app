@@ -1044,9 +1044,10 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                 </button>
                 <button 
                   onClick={() => {
-                    const todayTplId = calendarService.getScheduledSession(new Date(), selectedAthlete.id) || undefined;
-                    storageService.reopenSessionForAthlete(selectedAthlete.id, todayTplId);
-                    setToastMsg(`🔓 Sesión de hoy desbloqueada para ${selectedAthlete.name.split(' ')[0]}`);
+                    const serverToday = new Date(`${storageService.getServerTodayIsoSync()}T12:00:00`);
+                    const todayTplId = calendarService.getScheduledSession(serverToday, selectedAthlete.id) || undefined;
+                    void storageService.reopenSessionForAthlete(selectedAthlete.id, todayTplId);
+                    setToastMsg(`🔓 Sesión de hoy desbloqueada en todos los dispositivos para ${selectedAthlete.name.split(' ')[0]}`);
                     setTimeout(() => setToastMsg(null), 4000);
                   }}
                   className="bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 px-3.5 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"

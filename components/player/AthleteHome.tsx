@@ -170,12 +170,14 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   const isWorkoutEmpty = !currentWorkout || currentWorkout.id === 'empty-state' || currentWorkout.exercises.length === 0;
 
   const todaySummary = useMemo(() => {
-      const todayStr = storageService.getLocalTodayIso();
+      const todayStr = storageService.getServerTodayIsoSync();
       const todayLogs = storageService
         .getAllLogs()
         .filter(l =>
           l.timestamp &&
-          l.timestamp.startsWith(todayStr) &&
+          storageService.getLogServerDateIso(l.timestamp) === todayStr &&
+          l.exerciseId !== 'kinetix-session-done' &&
+          l.exerciseId !== 'kinetix-session-reopen' &&
           (!l.athleteId || l.athleteId === user.id) &&
           (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
         );
@@ -197,7 +199,12 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
 
   const completionStatus = useMemo(() => {
       if (storageService.isSessionReopenedByCoach(user.id)) return { isDone: false, label: '' };
-      if (!isWorkoutEmpty && storageService.isSessionComplete(currentWorkout.id, user.id)) return { isDone: true, label: 'SESIÓN COMPLETADA' };
+      if (!isWorkoutEmpty && storageService.isSessionComplete(currentWorkout.id, user.id)) {
+        return { isDone: true, label: 'SESIÓN COMPLETADA' };
+      }
+      if (storageService.isSessionComplete(currentWorkout?.id || '', user.id)) {
+        return { isDone: true, label: 'SESIÓN COMPLETADA' };
+      }
       if (todaySummary.hasLogs) return { isDone: true, label: 'SESIÓN COMPLETADA' };
       return { isDone: false, label: '' };
   }, [currentWorkout, isWorkoutEmpty, todaySummary.hasLogs, user.id]);
@@ -211,10 +218,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   }, [currentWorkout, isWorkoutEmpty]);
 
   const weeklyHorizon = useMemo(() => {
-    const today = new Date();
-    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const tmr = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    const tomorrowIso = `${tmr.getFullYear()}-${String(tmr.getMonth() + 1).padStart(2, '0')}-${String(tmr.getDate()).padStart(2, '0')}`;
+    const todayIso = storageService.getServerTodayIsoSync();
+    const today = new Date(`${todayIso}T12:00:00`);
     const dayOfWeek = today.getDay();
     const safeOffset = Math.min(0, weekOffset);
     const diffToMon = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) + safeOffset * 7;
@@ -226,32 +231,32 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
         d.setDate(monday.getDate() + i);
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const isToday = dateStr === todayIso;
-        const isTomorrow = dateStr === tomorrowIso;
         const isFuture = dateStr > todayIso;
         const isPast = dateStr < todayIso;
-        const tplId = (isToday || isTomorrow || isPast) ? calendarService.getScheduledSession(d, user.id) : null;
+        // Seguridad estricta: días futuros jamás consultan ni revelan rutinas
+        const tplId = (isToday || isPast) ? calendarService.getScheduledSession(d, user.id) : null;
         const tpl = tplId ? storageService.getWorkoutById(tplId) : undefined;
-        const dayLogs = allLogs.filter(l =>
-          l.timestamp.startsWith(dateStr) &&
-          (!l.athleteId || l.athleteId === user.id) &&
-          (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
-        );
-        const hasLogs = dayLogs.length > 0 || (isToday && completionStatus.isDone);
-        // Seguridad IP: Solo días pasados y únicamente MAÑANA muestran el grupo muscular; días posteriores quedan 100% ocultos
+        const dayLogs = !isFuture
+          ? allLogs.filter(l =>
+              storageService.getLogServerDateIso(l.timestamp) === dateStr &&
+              (!l.athleteId || l.athleteId === user.id) &&
+              (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log' || l.exerciseId === 'kinetix-session-done')
+            )
+          : [];
+        const hasLogs = isToday
+          ? completionStatus.isDone
+          : isPast && dayLogs.length > 0;
         const focusLabel = isPast
           ? (tpl ? getWorkoutMuscleFocus(tpl) : dayLogs.length > 0 ? getWorkoutMuscleFocus(undefined, dayLogs.map(l => l.exerciseId)) : '')
-          : isTomorrow && tpl
-          ? getWorkoutMuscleFocus(tpl)
           : '';
         week.push({
           dayName: ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d.getDay()],
           dayNum: d.getDate(),
           dateStr,
           isToday,
-          isTomorrow,
           isFuture,
           isPast,
-          hasSession: (isToday || isTomorrow) ? !!tplId : false,
+          hasSession: isToday ? !!tplId : false,
           isDone: hasLogs,
           focusLabel
         });
@@ -380,7 +385,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                    </div>
                  )}
 
-                 {/* CINTA SEMANAL INTERACTIVA (Solo historial pasado + Hoy + Enfoque muscular únicamente de Mañana) */}
+                 {/* CINTA SEMANAL INTERACTIVA (Solo historial pasado + Hoy; días futuros 100% bloqueados) */}
                  <section aria-label="Calendario semanal" className="bg-[#0F0F11] border border-white/10 rounded-3xl p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-3">
                        <h2 className="text-xs font-black uppercase tracking-wider text-white/70">Tu Semana de Entrenamiento</h2>
@@ -430,8 +435,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                              >
                                <span className="text-[10px] font-bold uppercase">{d.dayName}</span>
                                <span className="text-sm font-black tabular-nums">{d.dayNum}</span>
-                               <span className={`text-[9px] font-bold ${d.isDone ? 'text-emerald-400' : d.isToday && d.hasSession ? 'text-white' : d.isTomorrow && d.hasSession ? 'text-cyan-400' : 'text-white/25'}`}>
-                                 {d.isDone ? '✓' : d.isToday && d.hasSession ? 'HOY' : d.isTomorrow && d.hasSession ? '●' : '🔒'}
+                               <span className={`text-[9px] font-bold ${d.isDone ? 'text-emerald-400' : d.isToday && d.hasSession ? 'text-white' : 'text-white/25'}`}>
+                                 {d.isDone ? '✓' : d.isToday && d.hasSession ? 'HOY' : '🔒'}
                                </span>
                              </button>
                            );
@@ -445,11 +450,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                             ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Entrenaste ${weeklyHorizon[selectedDayIdx].focusLabel || 'tu sesión'} · Sesión archivada.`
                             : weeklyHorizon[selectedDayIdx].isPast
                             ? `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: Día de descanso / sin registro.`
-                            : weeklyHorizon[selectedDayIdx].isTomorrow && weeklyHorizon[selectedDayIdx].hasSession
-                            ? `Mañana (${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}): Toca ${weeklyHorizon[selectedDayIdx].focusLabel || 'Entrenamiento'} · Rutina bloqueada hasta mañana.`
-                            : weeklyHorizon[selectedDayIdx].isTomorrow
-                            ? `Mañana (${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}): Recuperación programada.`
-                            : `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: 🔒 Programación privada · Se desbloquea únicamente el día que corresponde entrenar.`}
+                            : `${weeklyHorizon[selectedDayIdx].dayName} ${weeklyHorizon[selectedDayIdx].dayNum}: 🔒 Día futuro bloqueado · Tu rutina se desbloquea únicamente el día que corresponde entrenar.`}
                         </span>
                         <button onClick={() => setSelectedDayIdx(null)} className="text-white/40 hover:text-white px-2 shrink-0">✕</button>
                       </div>
@@ -466,7 +467,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                         </a>
                     </div>
                  ) : completionStatus.isDone ? (
-                    /* SESIÓN YA TERMINADA HOY (BLOQUEO ANTICOPIA POST-SESIÓN) */
+                    /* SESIÓN YA TERMINADA HOY (BLOQUEO ANTICOPIA POST-SESIÓN SINCRONIZADO EN TODOS LOS DISPOSITIVOS) */
                     <div className="bg-[#0F0F11] border border-emerald-500/30 rounded-3xl p-6 md:p-8 space-y-6">
                         <div className="flex flex-wrap justify-between items-center gap-2">
                             <div>
@@ -475,7 +476,10 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                                     Hoy entrenaste: {todaySummary.muscleFocus}
                                 </h2>
                             </div>
-                            <span className="text-xs font-bold text-white/50">🔒 Cerrada de forma segura</span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-xs font-bold text-emerald-300">🔒 Cerrada de forma segura</span>
+                              <span className="text-[10px] font-bold text-white/45">☁️ Bloqueo sincronizado en la nube</span>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3">

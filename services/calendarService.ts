@@ -59,13 +59,27 @@ class CalendarService {
         .gte('start_at', cutoffIso);
       if (error || !data) return local;
       const cloudEvents = data.map(r => this.mapRowToEvent(r));
+      const serverTodayIso = storageService.getServerTodayIsoSync();
+      const isClientUser = storageService.getUser()?.role === 'client';
       const filtered = athleteId
-        ? cloudEvents.filter(e => e.athleteIds.includes(athleteId))
+        ? cloudEvents.filter(e => {
+            if (!e.athleteIds.includes(athleteId)) return false;
+            if (isClientUser) {
+              const evtDay = String(e.start || '').slice(0, 10);
+              return !evtDay || evtDay <= serverTodayIso;
+            }
+            return true;
+          })
         : cloudEvents;
 
       const map = new Map<string, CalendarEvent>();
       local
-        .filter(e => (e.start || '').slice(0, 10) >= cutoffIso)
+        .filter(e => {
+          const d = (e.start || '').slice(0, 10);
+          if (d < cutoffIso) return false;
+          if (isClientUser && d > serverTodayIso) return false;
+          return true;
+        })
         .forEach(e => map.set(e.id, e));
       filtered.forEach(ce => map.set(ce.id, ce));
       const merged = Array.from(map.values());
@@ -124,6 +138,9 @@ class CalendarService {
   getScheduledSession(date: Date, userId: string): string | null {
     const events = this.getEvents();
     const targetDateStr = this.getLocalDateStr(date);
+    if (storageService.getUser()?.role === 'client' && targetDateStr > storageService.getServerTodayIsoSync()) {
+      return null;
+    }
 
     const session = events.find(e => {
         const eventDateStr = e.start.split('T')[0];

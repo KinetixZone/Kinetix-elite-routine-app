@@ -141,16 +141,21 @@ const App: React.FC = () => {
   const refreshWorkoutContext = useCallback(async () => {
     if (!user) return;
     const athleteScope = user.role === 'client' ? user.id : undefined;
+    const serverTodayIso = await storageService.fetchServerTodayIso();
 
     const applyScheduledWorkout = async (sourceTemplates: Workout[]) => {
-      const today = new Date();
+      const today = new Date(`${serverTodayIso}T12:00:00`);
       const scheduledWorkoutId = calendarService.getScheduledSession(today, user.id);
       if (scheduledWorkoutId) {
         const scheduledWorkout =
           sourceTemplates.find(t => t.id === scheduledWorkoutId) ||
           storageService.getWorkoutById(scheduledWorkoutId) ||
           (await storageService.getTemplateByIdCloud(scheduledWorkoutId));
-        if (scheduledWorkout) {
+        const isFutureRoutine =
+          user.role === 'client' &&
+          scheduledWorkout?.scheduledDate &&
+          String(scheduledWorkout.scheduledDate).slice(0, 10) > serverTodayIso;
+        if (scheduledWorkout && !isFutureRoutine) {
           setCurrentWorkout(scheduledWorkout);
           return;
         }
@@ -197,14 +202,29 @@ const App: React.FC = () => {
   };
 
   const handleStartSession = (workout: Workout) => {
+      if (user?.role === 'client') {
+        const serverTodayIso = storageService.getServerTodayIsoSync();
+        const isFutureRoutine =
+          workout.scheduledDate && String(workout.scheduledDate).slice(0, 10) > serverTodayIso;
+        if (isFutureRoutine || storageService.isSessionComplete(workout.id, user.id)) {
+          void refreshWorkoutContext();
+          return;
+        }
+      }
       setCurrentWorkout(workout);
       setView('tracker');
   };
 
-  const handleFinishWorkout = (progress: ProgressState) => {
-    storageService.saveSessionLogs(progress.workoutLogs);
-    storageService.markSessionComplete(currentWorkout.id, user?.id);
-    refreshWorkoutContext();
+  const handleFinishWorkout = async (progress: ProgressState) => {
+    const enrichedLogs = progress.workoutLogs.map(log => ({
+      ...log,
+      athleteId: log.athleteId || user?.id,
+      workoutId: log.workoutId || currentWorkout.id,
+      workoutName: log.workoutName || currentWorkout.publicTitle || currentWorkout.name
+    }));
+    await storageService.saveSessionLogs(enrichedLogs);
+    await storageService.markSessionComplete(currentWorkout.id, user?.id);
+    await refreshWorkoutContext();
     setView(user?.role === 'client' ? 'athlete_home' : 'home');
   };
 

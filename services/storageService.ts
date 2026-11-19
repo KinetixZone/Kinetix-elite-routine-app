@@ -539,8 +539,13 @@ class StorageService {
   }
 
   async getTemplateByIdCloud(id: string): Promise<Workout | undefined> {
+    const isClient = this.getUser()?.role === 'client';
+    const serverToday = this.getServerTodayIsoSync();
+    const isFutureRestricted = (w?: Workout) =>
+      !!(isClient && w?.scheduledDate && String(w.scheduledDate).slice(0, 10) > serverToday);
+
     const local = this.getWorkoutById(id);
-    if (local) return local;
+    if (local) return isFutureRestricted(local) ? undefined : local;
     const preset = PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
     if (preset) return preset;
     if (!isSupabaseConfigured) return undefined;
@@ -548,6 +553,7 @@ class StorageService {
       const { data, error } = await supabase.from('kinetix_templates').select('*').eq('id', id).maybeSingle();
       if (!error && data) {
         const w = data as Workout;
+        if (isFutureRestricted(w)) return undefined;
         const current: Workout[] = JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
         const next = [...current.filter(t => t.id !== w.id), w];
         localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(next));
@@ -582,7 +588,12 @@ class StorageService {
     }
 
     if (athleteId) {
-      return localTemplates.filter(t => t.assignedTo === athleteId);
+      const serverToday = this.getServerTodayIsoSync();
+      return localTemplates.filter(
+        t =>
+          t.assignedTo === athleteId &&
+          (!t.scheduledDate || String(t.scheduledDate).slice(0, 10) <= serverToday)
+      );
     }
 
     const deletedIds = new Set(this.getDeletedTemplateIds());
@@ -629,9 +640,13 @@ class StorageService {
       const localScoped = this.getLocalTemplatesScoped(athleteId);
 
       if (athleteId) {
+        const serverToday = this.getServerTodayIsoSync();
+        const isAllowedForAthlete = (t: Workout) =>
+          t.assignedTo === athleteId &&
+          (!t.scheduledDate || String(t.scheduledDate).slice(0, 10) <= serverToday);
         const map = new Map<string, Workout>();
-        localScoped.forEach(t => map.set(t.id, t));
-        cloudTemplates.filter(t => t.assignedTo === athleteId).forEach(t => map.set(t.id, t));
+        localScoped.filter(isAllowedForAthlete).forEach(t => map.set(t.id, t));
+        cloudTemplates.filter(isAllowedForAthlete).forEach(t => map.set(t.id, t));
         const athleteOnly = Array.from(map.values());
         localStorage.setItem(KEYS.WORKOUT_TEMPLATES, JSON.stringify(athleteOnly));
         this.writeTemplatesCacheMeta(scopeKey);
@@ -837,7 +852,16 @@ class StorageService {
     try {
       const data = localStorage.getItem(KEYS.WORKOUT_TEMPLATES);
       const all: Workout[] = data ? JSON.parse(data) : [];
-      return all.find(w => w.id === id) || PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
+      const found = all.find(w => w.id === id) || PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
+      if (
+        found &&
+        this.getUser()?.role === 'client' &&
+        found.scheduledDate &&
+        String(found.scheduledDate).slice(0, 10) > this.getServerTodayIsoSync()
+      ) {
+        return undefined;
+      }
+      return found;
     } catch {
       return PRESET_WORKOUT_TEMPLATES.find(p => p.id === id);
     }
@@ -950,12 +974,21 @@ class StorageService {
       }
     } catch {}
     const logs = this.getAllLogs()
-      .filter(l => l.exerciseId === exerciseId && (!athleteId || !l.athleteId || l.athleteId === athleteId) && l.notes && l.notes.trim())
+      .filter(
+        l =>
+          l.exerciseId === exerciseId &&
+          l.exerciseId !== 'kinetix-session-done' &&
+          l.exerciseId !== 'kinetix-session-reopen' &&
+          (!athleteId || !l.athleteId || l.athleteId === athleteId) &&
+          l.notes &&
+          l.notes.trim()
+      )
       .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
     return logs[0]?.notes?.trim() || '';
   }
 
   private cacheExerciseNoteLocal(exerciseId: string, note: string, athleteId?: string) {
+    if (exerciseId === 'kinetix-session-done' || exerciseId === 'kinetix-session-reopen') return;
     try {
       const cacheKey = `kinetix_ex_notes_${athleteId || 'default'}`;
       const current = JSON.parse(localStorage.getItem(cacheKey) || '{}') as Record<string, string>;
@@ -981,13 +1014,13 @@ class StorageService {
 
     this.cacheExerciseNoteLocal(exerciseId, cleanNote, athleteId);
 
-    const todayIso = this.getLocalTodayIso();
+    const todayIso = this.getServerTodayIsoSync();
     const currentLogs = this.getAllLogs();
     const existingIdx = currentLogs.findIndex(
       l =>
         l.exerciseId === exerciseId &&
         (!athleteId || !l.athleteId || l.athleteId === athleteId) &&
-        (l.timestamp || '').startsWith(todayIso)
+        this.getLogServerDateIso(l.timestamp) === todayIso
     );
 
     if (existingIdx >= 0) {
@@ -1047,18 +1080,25 @@ class StorageService {
     }
   }
 
-  saveSessionLogs(logs: WorkoutLog[]) {
+  async saveSessionLogs(logs: WorkoutLog[]): Promise<void> {
     const currentLogs = this.getAllLogs();
     const currentPRs = this.getPRs();
     const exercises = this.getExercises();
+    const fallbackAthleteId = this.getUser()?.id;
 
-    const processedLogs = logs.map(log => {
-      if (log.notes && log.notes.trim()) {
+    const processedLogs = logs.map(rawLog => {
+      const log: WorkoutLog = {
+        ...rawLog,
+        athleteId: rawLog.athleteId || fallbackAthleteId,
+        timestamp: rawLog.timestamp || new Date().toISOString()
+      };
+      const isSystemMarker = log.exerciseId === 'kinetix-session-done' || log.exerciseId === 'kinetix-session-reopen';
+      if (log.notes && log.notes.trim() && !isSystemMarker) {
         this.cacheExerciseNoteLocal(log.exerciseId, log.notes.trim(), log.athleteId);
       }
       const w = Number(log.weight) || 0;
       const r = Number(log.reps) || 0;
-      if (w > 0 && r > 0 && log.exerciseId !== 'kinetix-class-log') {
+      if (w > 0 && r > 0 && log.exerciseId !== 'kinetix-class-log' && !isSystemMarker) {
         const est1RM = Math.round(w * (1 + r / 30) * 10) / 10;
         const existingPR = currentPRs.find(p => p.exerciseId === log.exerciseId);
         
@@ -1071,7 +1111,7 @@ class StorageService {
             weight: w,
             reps: r,
             estimated1RM: est1RM,
-            date: new Date().toISOString().split('T')[0]
+            date: this.getServerTodayIsoSync()
           };
           this.savePR(newPR);
           return { ...log, isPR: true };
@@ -1084,12 +1124,13 @@ class StorageService {
     const realExerciseKeysToday = new Set(
       processedLogs
         .filter(l => (Number(l.weight) > 0 || Number(l.reps) > 0))
-        .map(l => `${l.athleteId || ''}|${l.exerciseId}|${(l.timestamp || '').slice(0, 10)}`)
+        .map(l => `${l.athleteId || ''}|${l.exerciseId}|${this.getLogServerDateIso(l.timestamp)}`)
     );
     const cleanedPrevLogs = currentLogs.filter(l => {
+      if (l.exerciseId === 'kinetix-session-done' || l.exerciseId === 'kinetix-session-reopen') return true;
       const isPlaceholder = Number(l.weight) === 0 && Number(l.reps) === 0;
       if (!isPlaceholder) return true;
-      const key = `${l.athleteId || ''}|${l.exerciseId}|${(l.timestamp || '').slice(0, 10)}`;
+      const key = `${l.athleteId || ''}|${l.exerciseId}|${this.getLogServerDateIso(l.timestamp)}`;
       return !realExerciseKeysToday.has(key);
     });
 
@@ -1109,15 +1150,17 @@ class StorageService {
         notes: l.notes?.trim() || null,
         timestamp: l.timestamp || new Date().toISOString()
       }));
-      supabase.from('workout_logs').insert(fullRows).then(({ error }) => {
+      try {
+        const { error } = await supabase.from('workout_logs').insert(fullRows);
         if (error) {
           // Fallback seguro si la columna notes aún no existe en Supabase
           const basicRows = fullRows.map(({ notes: _n, ...rest }) => rest);
-          supabase.from('workout_logs').insert(basicRows).then(({ error: err2 }) => {
-            if (err2) console.warn('Cloud log insert skipped:', err2.message);
-          });
+          const { error: err2 } = await supabase.from('workout_logs').insert(basicRows);
+          if (err2) console.warn('Cloud log insert skipped:', err2.message);
         }
-      });
+      } catch (e: any) {
+        console.warn('Cloud log insert error:', e?.message);
+      }
     }
   }
 
@@ -1175,6 +1218,7 @@ class StorageService {
     const hours72 = 72 * 3600 * 1000;
 
     const recentLogs = logs.filter(l => {
+      if (l.exerciseId === 'kinetix-session-done' || l.exerciseId === 'kinetix-session-reopen') return false;
       const logTime = new Date(l.timestamp).getTime();
       return !isNaN(logTime) && (now - logTime) <= hours72;
     });
@@ -1236,6 +1280,13 @@ class StorageService {
     return this.cachedServerDate?.date || this.formatDateInServerTz(new Date());
   }
 
+  getLogServerDateIso(timestamp?: string): string {
+    if (!timestamp) return '';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return String(timestamp).slice(0, 10);
+    return this.formatDateInServerTz(d);
+  }
+
   async fetchServerTodayIso(force = false): Promise<string> {
     if (!force && this.cachedServerDate && Date.now() - this.cachedServerDate.fetchedAt < 60_000) {
       return this.cachedServerDate.date;
@@ -1289,13 +1340,55 @@ class StorageService {
     return normalizedEnd < todayIso;
   }
 
+  private getTodayLockTimeline(athleteId: string, workoutId?: string) {
+    const todayStr = this.getServerTodayIsoSync();
+    const allLogs = this.getAllLogs();
+    let latestDoneTs = 0;
+    let latestReopenTs = 0;
+
+    allLogs.forEach(l => {
+      if (l.athleteId !== athleteId) return;
+      if (this.getLogServerDateIso(l.timestamp) !== todayStr) return;
+      const ms = new Date(l.timestamp).getTime() || 0;
+      if (l.exerciseId === 'kinetix-session-reopen') {
+        if (ms > latestReopenTs) latestReopenTs = ms;
+        return;
+      }
+      if (l.exerciseId === 'kinetix-session-done') {
+        const matchesWorkout =
+          !workoutId ||
+          !l.notes ||
+          !l.notes.includes('[SESSION_DONE:') ||
+          l.notes.includes(`[SESSION_DONE:${workoutId}:`);
+        if (matchesWorkout && ms > latestDoneTs) latestDoneTs = ms;
+        return;
+      }
+      const isRealSet = Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log';
+      if (isRealSet && ms > latestDoneTs) {
+        latestDoneTs = ms;
+      }
+    });
+
+    if (localStorage.getItem(`kinetix_reopened_${athleteId}`) === todayStr) {
+      const localReopenMs = Number(localStorage.getItem(`kinetix_reopened_ts_${athleteId}`) || 0);
+      if (localReopenMs > latestReopenTs) latestReopenTs = localReopenMs;
+    }
+
+    const lockedId = localStorage.getItem(`kinetix_locked_${athleteId}_${todayStr}`);
+    if (lockedId && (!workoutId || lockedId === workoutId)) {
+      const localLockMs = Number(localStorage.getItem(`kinetix_locked_ts_${athleteId}_${todayStr}`) || Date.now());
+      if (localLockMs > latestDoneTs) latestDoneTs = localLockMs;
+    }
+
+    return { todayStr, latestDoneTs, latestReopenTs };
+  }
+
   isSessionComplete(workoutId: string, athleteId?: string): boolean {
-    const todayStr = this.getLocalTodayIso();
     if (athleteId) {
-      const reopened = localStorage.getItem(`kinetix_reopened_${athleteId}`);
-      if (reopened === todayStr) return false;
-      const locked = localStorage.getItem(`kinetix_locked_${athleteId}_${todayStr}`);
-      if (locked === workoutId) return true;
+      const { latestDoneTs, latestReopenTs } = this.getTodayLockTimeline(athleteId, workoutId);
+      if (latestDoneTs > 0 && latestDoneTs >= latestReopenTs) return true;
+      if (latestReopenTs > latestDoneTs) return false;
+      return false;
     }
     try {
       const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
@@ -1307,32 +1400,140 @@ class StorageService {
   }
 
   isSessionReopenedByCoach(athleteId: string): boolean {
-    const todayStr = this.getLocalTodayIso();
-    return localStorage.getItem(`kinetix_reopened_${athleteId}`) === todayStr;
+    const { latestDoneTs, latestReopenTs } = this.getTodayLockTimeline(athleteId);
+    if (latestReopenTs > 0 && latestReopenTs > latestDoneTs) return true;
+    const todayStr = this.getServerTodayIsoSync();
+    return localStorage.getItem(`kinetix_reopened_${athleteId}`) === todayStr && latestDoneTs === 0;
   }
 
-  markSessionComplete(workoutId: string, athleteId?: string) {
-    const todayStr = this.getLocalTodayIso();
+  async markSessionComplete(workoutId: string, athleteId?: string): Promise<void> {
+    const todayStr = this.getServerTodayIsoSync();
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
     if (athleteId) {
       localStorage.removeItem(`kinetix_reopened_${athleteId}`);
+      localStorage.removeItem(`kinetix_reopened_ts_${athleteId}`);
       localStorage.setItem(`kinetix_locked_${athleteId}_${todayStr}`, workoutId);
+      localStorage.setItem(`kinetix_locked_ts_${athleteId}_${todayStr}`, String(nowMs));
     }
-    const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
-    const list = data ? JSON.parse(data) : [];
-    if (!list.includes(workoutId)) {
+    try {
+      const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
+      const list = data ? JSON.parse(data) : [];
+      if (!list.includes(workoutId)) {
         list.push(workoutId);
         localStorage.setItem(KEYS.COMPLETED_SESSIONS, JSON.stringify(list));
+      }
+    } catch {}
+
+    if (athleteId) {
+      const doneMarker: WorkoutLog = {
+        athleteId,
+        exerciseId: 'kinetix-session-done',
+        setIndex: 0,
+        weight: 0,
+        reps: 0,
+        timestamp: nowIso,
+        isPR: false,
+        workoutId,
+        notes: `[SESSION_DONE:${workoutId}:${todayStr}]`
+      };
+      const prevLogs = this.getAllLogs().filter(
+        l =>
+          !(
+            l.athleteId === athleteId &&
+            this.getLogServerDateIso(l.timestamp) === todayStr &&
+            (l.exerciseId === 'kinetix-session-done' || l.exerciseId === 'kinetix-session-reopen')
+          )
+      );
+      localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([doneMarker, ...prevLogs].slice(0, 250)));
+
+      if (isSupabaseConfigured) {
+        try {
+          const fullRow = {
+            athlete_id: athleteId,
+            exercise_id: 'kinetix-session-done',
+            weight: 0,
+            reps: 0,
+            is_pr: false,
+            notes: doneMarker.notes,
+            timestamp: nowIso
+          };
+          const { error } = await supabase.from('workout_logs').insert(fullRow);
+          if (error) {
+            const { notes: _n, ...basicRow } = fullRow;
+            await supabase.from('workout_logs').insert(basicRow);
+          }
+        } catch (e) {
+          console.warn('Error sincronizando bloqueo de sesión:', e);
+        }
+      }
     }
   }
 
-  reopenSessionForAthlete(athleteId: string, workoutId?: string) {
-    const todayStr = this.getLocalTodayIso();
+  async reopenSessionForAthlete(athleteId: string, workoutId?: string): Promise<void> {
+    const todayStr = this.getServerTodayIsoSync();
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
     localStorage.setItem(`kinetix_reopened_${athleteId}`, todayStr);
+    localStorage.setItem(`kinetix_reopened_ts_${athleteId}`, String(nowMs));
     localStorage.removeItem(`kinetix_locked_${athleteId}_${todayStr}`);
+    localStorage.removeItem(`kinetix_locked_ts_${athleteId}_${todayStr}`);
     if (workoutId) {
-      const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
-      const list: string[] = data ? JSON.parse(data) : [];
-      localStorage.setItem(KEYS.COMPLETED_SESSIONS, JSON.stringify(list.filter(id => id !== workoutId)));
+      try {
+        const data = localStorage.getItem(KEYS.COMPLETED_SESSIONS);
+        const list: string[] = data ? JSON.parse(data) : [];
+        localStorage.setItem(KEYS.COMPLETED_SESSIONS, JSON.stringify(list.filter(id => id !== workoutId)));
+      } catch {}
+    }
+
+    const reopenMarker: WorkoutLog = {
+      athleteId,
+      exerciseId: 'kinetix-session-reopen',
+      setIndex: 0,
+      weight: 0,
+      reps: 0,
+      timestamp: nowIso,
+      isPR: false,
+      workoutId,
+      notes: `[SESSION_REOPEN:${todayStr}]`
+    };
+    const filteredLocal = this.getAllLogs().filter(
+      l =>
+        !(
+          l.athleteId === athleteId &&
+          this.getLogServerDateIso(l.timestamp) === todayStr &&
+          l.exerciseId === 'kinetix-session-done'
+        )
+    );
+    localStorage.setItem(KEYS.LOG_HISTORY, JSON.stringify([reopenMarker, ...filteredLocal].slice(0, 250)));
+
+    if (isSupabaseConfigured) {
+      try {
+        const windowStart = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+        await supabase
+          .from('workout_logs')
+          .delete()
+          .eq('athlete_id', athleteId)
+          .eq('exercise_id', 'kinetix-session-done')
+          .gte('timestamp', windowStart);
+
+        const fullRow = {
+          athlete_id: athleteId,
+          exercise_id: 'kinetix-session-reopen',
+          weight: 0,
+          reps: 0,
+          is_pr: false,
+          notes: reopenMarker.notes,
+          timestamp: nowIso
+        };
+        const { error } = await supabase.from('workout_logs').insert(fullRow);
+        if (error) {
+          const { notes: _n, ...basicRow } = fullRow;
+          await supabase.from('workout_logs').insert(basicRow);
+        }
+      } catch (e) {
+        console.warn('Error sincronizando desbloqueo en Supabase:', e);
+      }
     }
   }
 
@@ -1341,6 +1542,8 @@ class StorageService {
         .filter(
           l =>
             l.exerciseId === exId &&
+            l.exerciseId !== 'kinetix-session-done' &&
+            l.exerciseId !== 'kinetix-session-reopen' &&
             (!athleteId || !l.athleteId || l.athleteId === athleteId) &&
             (Number(l.weight) > 0 || Number(l.reps) > 0)
         )
@@ -1572,9 +1775,9 @@ class StorageService {
     ]);
 
     const registerLogActivity = (athleteId: string | undefined, timestamp: string | undefined, weight: any, reps: any, notes: any, exId: string) => {
-      const hasActivity = Number(weight) > 0 || Number(reps) > 0 || !!String(notes || '').trim() || exId === 'kinetix-class-log';
+      const hasActivity = Number(weight) > 0 || Number(reps) > 0 || !!String(notes || '').trim() || exId === 'kinetix-class-log' || exId === 'kinetix-session-done';
       if (hasActivity && timestamp) {
-        const day = String(timestamp).slice(0, 10);
+        const day = this.getLogServerDateIso(timestamp);
         if (day) activeLogDayKeys.add(`${athleteId || ''}|${day}`);
       }
     };
@@ -1714,7 +1917,15 @@ class StorageService {
       const r = Number(row.reps) || 0;
       const notes = String(row.notes || '').trim();
       const exId = row.exerciseId || row.exercise_id || '';
-      const tsDay = String(row.timestamp || '').slice(0, 10);
+      const tsDay = this.getLogServerDateIso(row.timestamp);
+
+      if (exId === 'kinetix-session-done' || exId === 'kinetix-session-reopen') {
+        if (tsDay && tsDay < cutoff30d) {
+          stale30dCount++;
+          if (source === 'Supabase' && row.id) cleanableCloudLogIds.add(String(row.id));
+        }
+        return;
+      }
 
       if (w === 0 && r === 0 && !notes && exId !== 'kinetix-class-log') {
         trashSessionsCount++;
@@ -1827,7 +2038,9 @@ class StorageService {
           Number(l.weight) === 0 &&
           Number(l.reps) === 0 &&
           !String(l.notes || '').trim() &&
-          l.exerciseId !== 'kinetix-class-log';
+          l.exerciseId !== 'kinetix-class-log' &&
+          l.exerciseId !== 'kinetix-session-done' &&
+          l.exerciseId !== 'kinetix-session-reopen';
         return !isGarbage;
       });
       removedLocalLogs = localLogs.length - cleanedLogs.length;
@@ -1922,12 +2135,12 @@ class StorageService {
         .filter(
           l =>
             l.athleteId === ath.id &&
-            (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+            (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log' || l.exerciseId === 'kinetix-session-done')
         )
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
       const uniqueRecentDays = new Set(
-        athLogs.filter(l => l.timestamp >= cutoff7d).map(l => l.timestamp.split('T')[0])
+        athLogs.filter(l => l.timestamp >= cutoff7d).map(l => this.getLogServerDateIso(l.timestamp))
       ).size;
       const targetDays = Math.max(1, ath.daysPerWeek || 4);
       const compliance = Math.min(100, Math.round((uniqueRecentDays / targetDays) * 100));

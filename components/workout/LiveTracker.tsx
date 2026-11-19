@@ -169,16 +169,44 @@ const generateTrackingRows = (ex: WorkoutExercise): TrackingRow[] => {
 };
 
 export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }) => {
-  const [progress, setProgress] = useState<ProgressState>({
-    currentExerciseIndex: 0,
-    completedSets: 0,
-    isPairTurn: false,
-    subIndex: 0,
-    performanceData: {},
-    workoutLogs: [],
-    emomCurrentMin: 1,
-    tabataCurrentRound: 1,
-    tabataCurrentSet: 1
+  const draftKey = useMemo(
+    () => `kinetix_draft_${user?.id || 'anon'}_${workout.id}_${storageService.getServerTodayIsoSync()}`,
+    [user?.id, workout.id]
+  );
+
+  const [progress, setProgress] = useState<ProgressState>(() => {
+    try {
+      const savedDraft = localStorage.getItem(
+        `kinetix_draft_${user?.id || 'anon'}_${workout.id}_${storageService.getServerTodayIsoSync()}`
+      );
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.workoutLogs)) {
+          return {
+            currentExerciseIndex: 0,
+            completedSets: parsed.workoutLogs.length || 0,
+            isPairTurn: false,
+            subIndex: 0,
+            performanceData: parsed.performanceData || {},
+            workoutLogs: parsed.workoutLogs || [],
+            emomCurrentMin: 1,
+            tabataCurrentRound: 1,
+            tabataCurrentSet: 1
+          };
+        }
+      }
+    } catch {}
+    return {
+      currentExerciseIndex: 0,
+      completedSets: 0,
+      isPairTurn: false,
+      subIndex: 0,
+      performanceData: {},
+      workoutLogs: [],
+      emomCurrentMin: 1,
+      tabataCurrentRound: 1,
+      tabataCurrentSet: 1
+    };
   });
 
   const [expandedIdx, setExpandedIdx] = useState<number | null>(workout.exercises.length > 0 ? 0 : null);
@@ -186,11 +214,27 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
   const [elapsed, setElapsed] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [isClosingSession, setIsClosingSession] = useState(false);
   const [feedback, setFeedback] = useState<SessionFeedback>({ rpe: 7, fatigue: 3, notes: '' });
   const [aiDebrief, setAiDebrief] = useState<string | null>(null);
   const [showConverter, setShowConverter] = useState(false);
   const [privacyShield, setPrivacyShield] = useState(false);
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      if (progress.workoutLogs.length > 0 || Object.keys(progress.performanceData).length > 0) {
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            performanceData: progress.performanceData,
+            workoutLogs: progress.workoutLogs,
+            savedAt: Date.now()
+          })
+        );
+      }
+    } catch {}
+  }, [draftKey, progress.performanceData, progress.workoutLogs]);
 
   const previousNoteMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -413,6 +457,9 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       
       const currentExNote = exerciseNotes[row.exerciseId]?.trim();
       const log: WorkoutLog = {
+        athleteId: user?.id,
+        workoutId: workout.id,
+        workoutName: workout.publicTitle || workout.name,
         exerciseId: row.exerciseId,
         setIndex: row.globalIndex,
         weight: finalWeight,
@@ -548,6 +595,9 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
     const rows = generateTrackingRows(ex);
     
     const newLogs: WorkoutLog[] = rows.map(r => ({
+      athleteId: user?.id,
+      workoutId: workout.id,
+      workoutName: workout.publicTitle || workout.name,
       exerciseId: r.exerciseId,
       setIndex: r.globalIndex,
       weight: parseWeightValue(r.targetWeight),
@@ -646,9 +696,16 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
               </button>
             )}
             <div className="min-w-0">
-              <h1 className="text-[11px] font-black uppercase text-red-500 tracking-wider truncate">
-                {workout.publicTitle || workout.name}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-[11px] font-black uppercase text-red-500 tracking-wider truncate">
+                  {workout.publicTitle || workout.name}
+                </h1>
+                {progress.workoutLogs.length > 0 && (
+                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[8px] font-black uppercase text-emerald-300 shrink-0">
+                    ✓ {progress.workoutLogs.length} guardadas
+                  </span>
+                )}
+              </div>
               <p className="text-xl font-black italic tracking-tighter leading-none tabular-nums">
                 {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
               </p>
@@ -729,11 +786,20 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
         </div>
 
         {confirmExit && onExit && (
-          <div className="bg-red-950/90 border-t border-red-500/40 px-4 py-3 flex items-center justify-between gap-3 max-w-4xl mx-auto">
-            <span className="text-xs font-bold text-red-100">¿Salir de la sesión sin finalizar? Se perderán las series no guardadas.</span>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => setConfirmExit(false)} className="px-3 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white">Seguir</button>
-              <button onClick={onExit} className="px-3 py-1.5 rounded-lg bg-red-600 text-xs font-bold text-white">Sí, Salir</button>
+          <div className="bg-[#121216] border-t border-amber-500/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3 max-w-4xl mx-auto">
+            <span className="text-xs font-bold text-amber-100">
+              Tus {progress.workoutLogs.length} serie(s) quedan en borrador local. Para cerrar y bloquear la sesión en todos tus dispositivos usa "Finalizar".
+            </span>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <button type="button" onClick={() => setConfirmExit(false)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold text-white">
+                ← Seguir
+              </button>
+              <button type="button" onClick={() => { setConfirmExit(false); setShowFeedback(true); }} className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white">
+                Finalizar ✓
+              </button>
+              <button type="button" onClick={onExit} className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 text-xs font-bold text-white">
+                Salir sin cerrar
+              </button>
             </div>
           </div>
         )}
@@ -1379,20 +1445,28 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
 
                 <div className="space-y-2.5">
                   <button 
-                    onClick={() => {
+                    type="button"
+                    disabled={isClosingSession}
+                    onClick={async () => {
+                      if (isClosingSession) return;
+                      setIsClosingSession(true);
+                      try {
+                        localStorage.removeItem(draftKey);
+                      } catch {}
                       const updatedLogs = progress.workoutLogs.map(log => ({ 
                         ...log, 
                         athleteId: user?.id,
                         workoutId: workout.id,
-                        workoutName: workout.name,
+                        workoutName: workout.publicTitle || workout.name,
                         notes: exerciseNotes[log.exerciseId]?.trim() || log.notes,
                         feedback 
                       }));
-                      onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });
+                      await onFinish({ ...progress, workoutLogs: updatedLogs, sessionFeedback: feedback });
+                      setIsClosingSession(false);
                     }} 
-                    className="w-full py-5 bg-white text-black rounded-[22px] font-black uppercase tracking-[0.3em] text-[10px] shadow-xl hover:bg-red-600 hover:text-white transition-all active:scale-95"
+                    className="w-full py-5 bg-white text-black rounded-[22px] font-black uppercase tracking-[0.25em] text-[10px] shadow-xl hover:bg-red-600 hover:text-white transition-all active:scale-95 disabled:opacity-50"
                   >
-                    CERRAR Y BLOQUEAR SESIÓN ✓
+                    {isClosingSession ? 'SINCRONIZANDO Y BLOQUEANDO...' : 'CERRAR Y BLOQUEAR SESIÓN ✓'}
                   </button>
                   <button
                     type="button"
