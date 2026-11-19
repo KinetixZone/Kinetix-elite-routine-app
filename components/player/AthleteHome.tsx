@@ -573,7 +573,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                                                 {String(idx + 1).padStart(2, '0')}
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-black uppercase italic text-white truncate">
+                                                <p className="text-sm font-black uppercase italic text-white leading-snug break-words">
                                                     {ex.name}
                                                     {ex.pair ? ` + ${ex.pair.name}` : ''}
                                                     {ex.supersetChain && ex.supersetChain.length > 0 ? ` (+${ex.supersetChain.length})` : ''}
@@ -584,7 +584,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
                                                     {ex.method && ex.method !== 'standard' ? ` · ${METHOD_LABEL[ex.method] || ex.method}` : ''}
                                                 </p>
                                                 {ex.coachCue && (
-                                                    <p className="text-[11px] text-cyan-300/80 mt-1 line-clamp-1">
+                                                    <p className="text-[11px] text-cyan-300/85 mt-1 leading-relaxed">
                                                         Indicación: {ex.coachCue}
                                                     </p>
                                                 )}

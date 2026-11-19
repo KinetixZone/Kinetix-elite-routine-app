@@ -281,11 +281,11 @@ class StorageService {
       } catch (e) { return defaultBranding; }
   }
 
-  saveBranding(config: BrandingConfig) {
+  async saveBranding(config: BrandingConfig): Promise<void> {
       localStorage.setItem(KEYS.BRANDING, JSON.stringify(config));
       if (isSupabaseConfigured) {
         try {
-          void supabase.from('kinetix_templates').upsert({
+          await supabase.from('kinetix_templates').upsert({
             id: '__kinetix_sys_branding__',
             name: 'Kinetix Branding Config',
             publicTitle: config.brandName || 'KINETIX FUNCTIONAL ZONE',

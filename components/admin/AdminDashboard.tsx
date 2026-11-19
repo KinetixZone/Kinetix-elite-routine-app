@@ -145,9 +145,9 @@ export const AdminDashboard: React.FC<Props> = ({ currentUser, onNavigate }) => 
       storageService.saveSystemConfig(newConfig);
   };
 
-  const handleSaveBranding = () => {
-    storageService.saveBranding(branding);
-    notifyAdmin("✅ Branding actualizado correctamente.", true);
+  const handleSaveBranding = async () => {
+    await storageService.saveBranding(branding);
+    notifyAdmin("✅ Branding, datos bancarios y clave maestra guardados en local y nube.", true);
     setTimeout(() => window.location.reload(), 900);
   };
 
@@ -375,46 +375,45 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
   };
 
   return (
-    <div className="pt-6 md:pt-8 pb-32 px-4 md:px-6 max-w-7xl mx-auto min-h-screen text-white font-sans bg-[#050507] animate-in fade-in duration-700 relative overflow-hidden">
+    <div className="pt-6 md:pt-8 pb-32 px-4 md:px-6 max-w-7xl mx-auto min-h-screen text-white font-sans bg-[#050507] animate-in fade-in duration-700 relative overflow-x-hidden">
         
         <div className="absolute top-0 right-0 w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-red-600/5 blur-[100px] rounded-full -mr-32 -mt-32 pointer-events-none" />
 
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 md:mb-12 gap-6 md:gap-8 relative z-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-10 gap-5 md:gap-8 relative z-10">
             <div className="space-y-3 md:space-y-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 md:w-12 md:h-12 bg-red-600 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-transform hover:rotate-12 cursor-pointer">🔐</div>
+                    <div className="w-10 h-10 md:w-12 md:h-12 bg-red-600 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-[0_0_20px_rgba(220,38,38,0.4)] transition-transform hover:rotate-12 cursor-pointer shrink-0">🔐</div>
                     <div>
                         <div className="flex items-center gap-2">
-                           <span className="text-[8px] md:text-[10px] font-black uppercase text-red-400 tracking-[0.4em]">Overlord Master Console</span>
+                           <span className="text-[9px] md:text-[10px] font-black uppercase text-red-400 tracking-[0.25em] md:tracking-[0.4em]">Overlord Master Console</span>
                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
                         </div>
-                        <h1 className="text-4xl md:text-7xl font-black uppercase italic text-white tracking-tighter leading-none">
+                        <h1 className="text-3xl sm:text-4xl md:text-7xl font-black uppercase italic text-white tracking-tighter leading-none">
                             Consola <span className="text-red-500">Maestra</span>
                         </h1>
                     </div>
                 </div>
             </div>
             
-            <button onClick={() => onNavigate('home')} className="w-full md:w-auto px-8 py-4 bg-white/5 hover:bg-red-600 hover:text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 active:scale-95">
+            <button onClick={() => onNavigate('home')} className="w-full md:w-auto px-6 py-3.5 bg-white/5 hover:bg-red-600 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10 active:scale-95">
                 Volver al Dashboard ↩
             </button>
         </div>
 
-        <div className="flex gap-6 md:gap-8 mb-10 md:mb-12 border-b border-white/5 relative z-20 overflow-x-auto pb-4 no-scrollbar">
+        <div className="flex flex-wrap gap-2.5 md:gap-4 mb-8 md:mb-10 border-b border-white/10 relative z-20 pb-4">
             {[
                 { id: 'system', label: 'Hardware' },
                 { id: 'devops', label: 'DevOps & Link' },
-                { id: 'branding', label: 'Branding' },
-                { id: 'data', label: 'Seguridad' },
+                { id: 'branding', label: 'Branding & Pagos' },
+                { id: 'data', label: 'Respaldo' },
                 { id: 'audit', label: 'Auditoría' }
             ].map((t) => (
                 <button 
                     key={t.id}
                     onClick={() => setActiveTab(t.id as any)} 
-                    className={`relative text-[9px] md:text-[10px] font-black uppercase tracking-[0.4em] transition-all whitespace-nowrap ${activeTab === t.id ? 'text-red-500' : 'text-white/20 hover:text-white/40'}`}
+                    className={`px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.14em] md:tracking-[0.25em] transition-all border ${activeTab === t.id ? 'bg-red-600/20 text-red-400 border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.2)]' : 'bg-white/[0.03] text-white/45 border-white/5 hover:text-white'}`}
                 >
                     {t.label}
-                    {activeTab === t.id && <div className="absolute -bottom-[18px] left-0 w-full h-[2px] bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />}
                 </button>
             ))}
         </div>
@@ -935,7 +934,7 @@ CREATE POLICY "Acceso total métricas corporales" ON public.body_metrics FOR ALL
                                                             }`}>
                                                                 {item.category === 'trash_session' ? 'Sesión Basura' : item.category === 'stale_30d' ? '>30d Sin Actividad' : item.category === 'orphan_calendar' ? 'Evento Huérfano' : 'Ejercicio Huérfano'}
                                                             </span>
-                                                            <span className="text-xs font-black text-white truncate">{item.label}</span>
+                                                            <span className="text-xs font-black text-white break-words">{item.label}</span>
                                                         </div>
                                                         <p className="text-[11px] text-white/50 mt-1">{item.detail}</p>
                                                     </div>

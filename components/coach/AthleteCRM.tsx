@@ -837,7 +837,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
           <button
             type="button"
             onClick={() => setShowImportModal(true)}
-            className="col-span-1 py-2 px-2 rounded-xl bg-white/5 hover:bg-cyan-500 hover:text-black border border-white/10 text-[9px] font-black uppercase tracking-wider text-cyan-300 transition-all truncate"
+            className="col-span-1 py-2.5 px-2 rounded-xl bg-white/5 hover:bg-cyan-500 hover:text-black border border-white/10 text-[9px] font-black uppercase tracking-wider text-cyan-300 transition-all text-center"
             title="Importar alumnos desde XML, CSV o Excel de otra app"
           >
             ⬆ XML/CSV
@@ -849,7 +849,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               setToastMsg('Alumnos exportados a Excel (.csv).');
               setTimeout(() => setToastMsg(null), 3000);
             }}
-            className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all truncate"
+            className="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/75 hover:text-white transition-all text-center"
             title="Descargar lista en Excel CSV"
           >
             ⬇ CSV
@@ -861,7 +861,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
               setToastMsg('Alumnos exportados en formato XML.');
               setTimeout(() => setToastMsg(null), 3000);
             }}
-            className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/70 hover:text-white transition-all truncate"
+            className="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-[9px] font-black uppercase tracking-wider text-white/75 hover:text-white transition-all text-center"
             title="Descargar lista en formato XML"
           >
             ⬇ XML
@@ -916,8 +916,8 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
              return (
                <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-4 md:p-5 rounded-[22px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
                   <div className="flex justify-between items-start gap-2">
-                      <h3 className="text-base md:text-lg font-black uppercase italic tracking-tight mb-0.5 truncate">{athlete.name}</h3>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <h3 className="text-base md:text-lg font-black uppercase italic tracking-tight mb-0.5 break-words leading-snug">{athlete.name}</h3>
+                      <div className="flex items-center gap-1 flex-wrap justify-end shrink-0">
                         {athlete.role === 'coach' && (
                           <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-purple-500/20 text-purple-400">COACH</span>
                         )}
@@ -929,11 +929,11 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                         </span>
                       </div>
                   </div>
-                  <p className="text-[10px] opacity-60 font-mono font-bold">@{athlete.username || generateUsernameFromName(athlete.name)}</p>
-                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
-                     <span className="text-[8px] font-mono text-red-500/80">Clave: {athlete.password || 'kinetix.atleta'}</span>
+                  <p className="text-[10px] opacity-60 font-mono font-bold break-all">@{athlete.username || generateUsernameFromName(athlete.name)}</p>
+                  <div className="flex flex-wrap justify-between items-center gap-1.5 mt-2 pt-2 border-t border-white/5">
+                     <span className="text-[9px] font-mono text-red-400">Clave: {athlete.password || 'kinetix.atleta'}</span>
                      {athlete.medicalConditions && (
-                       <span className="text-[7px] font-bold uppercase tracking-wider text-cyan-400/90 bg-cyan-950/50 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                       <span className="text-[8px] font-bold uppercase tracking-wider text-cyan-400/90 bg-cyan-950/50 px-2 py-0.5 rounded-md break-words">
                          {athlete.medicalConditions}
                        </span>
                      )}

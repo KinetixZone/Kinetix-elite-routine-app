@@ -271,39 +271,50 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#050507] text-white pb-24 md:pb-28">
-        {/* Barra Superior de Identidad de Coach / Dueño (Compacta en móvil y desktop) */}
-        <header className="sticky top-0 z-[400] bg-[#050507]/95 backdrop-blur-xl border-b border-white/10 px-3 md:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-                <div className="relative w-9 h-9 rounded-xl bg-black border border-cyan-500/40 p-0.5 overflow-hidden shadow-[0_0_12px_rgba(0,240,255,0.25)] flex items-center justify-center shrink-0">
-                    <img 
-                        src="/assets/aistudio/1759185151992_02f8a860.jpg" 
-                        alt="Kinetix Logo" 
-                        className="w-full h-full object-cover rounded-lg"
-                    />
-                </div>
-                <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] md:text-xs font-black uppercase text-white tracking-wider truncate">
-                            {user.name.toLowerCase().includes('leslie') ? '👑 Leslie' : user.name.toLowerCase().includes('jorge') ? '👑 Jorge González' : user.name}
-                        </span>
-                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest bg-red-600/20 text-red-400 border border-red-500/40 shrink-0">
-                            {user.name.toLowerCase().includes('jorge') ? 'HEAD COACH & DUEÑO' : user.name.toLowerCase().includes('leslie') ? 'DUEÑA & COACH' : 'COACH'}
-                        </span>
+        {/* Barra Superior de Identidad de Coach / Dueño (Legible y responsiva en móvil y compu) */}
+        <header className="sticky top-0 z-[400] bg-[#050507]/95 backdrop-blur-xl border-b border-white/10 px-3 md:px-6 py-2.5 space-y-2 lg:space-y-0 lg:flex lg:items-center lg:justify-between lg:gap-4">
+            <div className="flex items-center justify-between gap-2 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative w-9 h-9 rounded-xl bg-black border border-cyan-500/40 p-0.5 overflow-hidden shadow-[0_0_12px_rgba(0,240,255,0.25)] flex items-center justify-center shrink-0">
+                        <img 
+                            src="/assets/aistudio/1759185151992_02f8a860.jpg" 
+                            alt="Kinetix Logo" 
+                            className="w-full h-full object-cover rounded-lg"
+                        />
                     </div>
-                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-wider truncate">
-                        <span className="text-cyan-400 font-black">Kinetix</span> · {VIEW_LABELS[view]}
-                    </p>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-black uppercase text-white tracking-wider leading-tight">
+                                {user.name.toLowerCase().includes('leslie') ? '👑 Leslie Barrera' : user.name.toLowerCase().includes('jorge') ? '👑 Jorge González' : user.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-red-600/20 text-red-400 border border-red-500/40 shrink-0">
+                                {user.name.toLowerCase().includes('jorge') ? 'HEAD COACH & DUEÑO' : user.name.toLowerCase().includes('leslie') ? 'DUEÑA & COACH' : 'COACH'}
+                            </span>
+                        </div>
+                        <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider leading-tight mt-0.5">
+                            <span className="text-cyan-400 font-black">Kinetix</span> · {VIEW_LABELS[view]}
+                        </p>
+                    </div>
                 </div>
+
+                {/* Botón Salir siempre visible en la esquina derecha en móvil */}
+                <button 
+                    onClick={handleLogout} 
+                    className="lg:hidden px-3 py-2 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/75 hover:text-red-400 text-[10px] font-black uppercase tracking-wider border border-white/10 transition-all shrink-0"
+                    title="Cerrar Sesión"
+                >
+                    Salir
+                </button>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <div className="flex items-center gap-1.5 flex-wrap justify-start lg:justify-end">
                 {/* Navegación Global Anterior / Siguiente para Coach y Dueños */}
                 <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-0.5">
                     <button
                         type="button"
                         onClick={goBack}
                         disabled={navHistory.length === 0 && view === 'home'}
-                        className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/85 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-white/90 hover:bg-white/15 disabled:opacity-25 transition-all"
                         title="Regresar a la vista anterior"
                     >
                         ← Regresar
@@ -312,7 +323,7 @@ const App: React.FC = () => {
                         type="button"
                         onClick={goForward}
                         disabled={forwardHistory.length === 0}
-                        className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider text-white/85 hover:bg-white/15 disabled:opacity-25 transition-all"
+                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-white/90 hover:bg-white/15 disabled:opacity-25 transition-all"
                         title="Ir a la vista siguiente"
                     >
                         Siguiente →
@@ -325,10 +336,10 @@ const App: React.FC = () => {
                         href="https://kinetix-control.vercel.app/" 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-600 text-cyan-300 hover:text-white text-[10px] font-black uppercase tracking-wider border border-cyan-500/30 transition-all"
                         title="Control de Pagos & Membresías (Solo Dueños)"
                     >
-                        <span>💳</span> <span className="hidden sm:inline">Pagos</span>
+                        <span>💳</span> <span>Pagos</span>
                     </a>
                 )}
 
@@ -337,32 +348,24 @@ const App: React.FC = () => {
                     href="https://kinetix-progress.vercel.app/" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-red-500/30 transition-all"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white text-[10px] font-black uppercase tracking-wider border border-red-500/30 transition-all"
                     title="Seguimiento de Cargas & RM (kinetix-progress.vercel.app)"
                 >
-                    <span>📈</span> <span className="hidden sm:inline">RM</span>
+                    <span>📈</span> <span>RM</span>
                 </a>
 
                 {/* Calculadora de Unidades KG ⇄ LBS */}
                 <button 
                     onClick={() => setShowUnitConverter(true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white text-white hover:text-black text-[9px] font-black uppercase tracking-wider border border-white/20 transition-all"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white text-white hover:text-black text-[10px] font-black uppercase tracking-wider border border-white/20 transition-all"
                     title="Convertir Kilogramos y Libras"
                 >
-                    <span>⚖️</span> <span className="hidden md:inline">KG⇄LBS</span>
+                    <span>⚖️</span> <span>KG⇄LBS</span>
                 </button>
 
-                {(user.role === 'admin' || user.role === 'owner') && (
-                    <button 
-                        onClick={() => navigateTo('admin_dashboard')} 
-                        className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[9px] font-black uppercase tracking-wider border border-blue-500/40 transition-all"
-                    >
-                        <span>⚙️</span> Sistema
-                    </button>
-                )}
                 <button 
                     onClick={handleLogout} 
-                    className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/60 hover:text-red-400 text-[9px] font-black uppercase tracking-wider border border-white/10 transition-all"
+                    className="hidden lg:inline-flex px-3 py-1.5 rounded-xl bg-white/5 hover:bg-red-950/60 text-white/70 hover:text-red-400 text-[10px] font-black uppercase tracking-wider border border-white/10 transition-all"
                     title="Cerrar Sesión"
                 >
                     Salir
@@ -370,23 +373,27 @@ const App: React.FC = () => {
             </div>
         </header>
 
-        <nav className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/15 px-5 md:px-8 py-3 md:py-4 rounded-3xl flex items-center gap-6 md:gap-12 z-[500] shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
-            <button onClick={() => navigateTo('home')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'home' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
-                <span className="text-lg md:text-xl">📊</span>
-                <span className="text-[8px] font-black uppercase tracking-wider">Inicio</span>
+        <nav className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 w-[calc(100%-1rem)] max-w-xl bg-[#0F0F11]/95 backdrop-blur-3xl border border-white/15 px-2 sm:px-5 py-2.5 md:py-3.5 rounded-3xl flex items-center justify-around gap-1 z-[500] shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
+            <button onClick={() => navigateTo('home')} className={`flex-1 flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-all ${view === 'home' ? 'text-red-500 bg-red-500/10' : 'text-white/55 hover:text-white'}`}>
+                <span className="text-base md:text-xl">📊</span>
+                <span className="text-[9px] font-black uppercase tracking-wide">Inicio</span>
             </button>
-            <button onClick={() => navigateTo('crm')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'crm' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
-                <span className="text-lg md:text-xl">👥</span>
-                <span className="text-[8px] font-black uppercase tracking-wider">Atletas</span>
+            <button onClick={() => navigateTo('crm')} className={`flex-1 flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-all ${view === 'crm' ? 'text-red-500 bg-red-500/10' : 'text-white/55 hover:text-white'}`}>
+                <span className="text-base md:text-xl">👥</span>
+                <span className="text-[9px] font-black uppercase tracking-wide">Atletas</span>
             </button>
-            <button onClick={() => navigateTo('manager')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'manager' ? 'text-red-500 scale-105' : 'text-white/50 hover:text-white'}`}>
-                <span className="text-lg md:text-xl">📐</span>
-                <span className="text-[8px] font-black uppercase tracking-wider">Rutinas</span>
+            <button onClick={() => navigateTo('manager')} className={`flex-1 flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-all ${view === 'manager' ? 'text-red-500 bg-red-500/10' : 'text-white/55 hover:text-white'}`}>
+                <span className="text-base md:text-xl">📐</span>
+                <span className="text-[9px] font-black uppercase tracking-wide">Rutinas</span>
+            </button>
+            <button onClick={() => navigateTo('library')} className={`flex-1 flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-all ${view === 'library' ? 'text-cyan-400 bg-cyan-500/10' : 'text-white/55 hover:text-white'}`}>
+                <span className="text-base md:text-xl">📚</span>
+                <span className="text-[9px] font-black uppercase tracking-wide">Ejercicios</span>
             </button>
             {(user.role === 'admin' || user.role === 'owner') && (
-                <button onClick={() => navigateTo('admin_dashboard')} className={`group flex flex-col items-center gap-0.5 transition-all ${view === 'admin_dashboard' ? 'text-blue-500 scale-105' : 'text-white/50 hover:text-white'}`}>
-                    <span className="text-lg md:text-xl">⚙️</span>
-                    <span className="text-[8px] font-black uppercase tracking-wider">Sistema</span>
+                <button onClick={() => navigateTo('admin_dashboard')} className={`flex-1 flex flex-col items-center gap-0.5 py-1 rounded-2xl transition-all ${view === 'admin_dashboard' ? 'text-blue-400 bg-blue-500/10' : 'text-white/55 hover:text-white'}`}>
+                    <span className="text-base md:text-xl">⚙️</span>
+                    <span className="text-[9px] font-black uppercase tracking-wide">Sistema</span>
                 </button>
             )}
         </nav>

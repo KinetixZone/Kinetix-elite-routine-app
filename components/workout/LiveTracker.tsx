@@ -697,7 +697,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-[11px] font-black uppercase text-red-500 tracking-wider truncate">
+                <h1 className="text-[11px] font-black uppercase text-red-500 tracking-wider leading-snug break-words">
                   {workout.publicTitle || workout.name}
                 </h1>
                 {progress.workoutLogs.length > 0 && (
@@ -779,7 +779,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                 }`}
               >
                 <span className="tabular-nums">{isComplete ? '✓' : `${idx + 1}.`}</span>
-                <span className="max-w-[110px] truncate">{ex.name}</span>
+                <span>{ex.name}</span>
               </button>
             );
           })}

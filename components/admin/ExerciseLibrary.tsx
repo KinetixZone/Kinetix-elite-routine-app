@@ -396,12 +396,12 @@ export const ExerciseLibrary: React.FC<{ isEmbedded?: boolean; onBack?: () => vo
                      </div>
                   </div>
                   
-                  <h3 className="text-lg font-black uppercase italic tracking-tight text-white mb-1">{ex.name}</h3>
-                  <p className="text-xs text-white/50 line-clamp-2">{ex.technique || 'Sin indicación técnica definida'}</p>
+                  <h3 className="text-lg font-black uppercase italic tracking-tight text-white mb-1 break-words leading-snug">{ex.name}</h3>
+                  <p className="text-xs text-white/60 leading-relaxed">{ex.technique || 'Sin indicación técnica definida'}</p>
                </div>
                
-               <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                  <span className={`text-[9px] font-bold truncate max-w-[65%] ${ex.videoUrl ? 'text-green-400/80' : 'text-white/25'}`}>
+               <div className="flex justify-between items-center gap-2 pt-3 border-t border-white/5">
+                  <span className={`text-[10px] font-bold ${ex.videoUrl ? 'text-green-400/90' : 'text-white/30'}`}>
                     {ex.videoUrl ? '🎥 Video vinculado' : 'Sin link de video'}
                   </span>
                   <button 
