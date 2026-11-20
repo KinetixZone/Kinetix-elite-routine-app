@@ -27,7 +27,18 @@ export type TrainingMethod =
   | 'topset_backoff'
   | 'clusters';
 
-export type SetType = 'straight' | 'top_set' | 'back_off' | 'warmup' | 'amrap' | 'rest_pause' | 'drop_set';
+export type SetType =
+  | 'straight'
+  | 'top_set'
+  | 'back_off'
+  | 'warmup'
+  | 'amrap'
+  | 'rest_pause'
+  | 'drop_set'
+  | 'eccentric'
+  | 'concentric'
+  | 'isometric'
+  | 'custom';
 
 export interface Exercise {
   id: string;
@@ -168,6 +179,7 @@ export interface WorkoutExercise {
   tempo?: string; // Cadencia excéntrico-isometría-concéntrico (ej: "3-0-1-0")
   intensityPercent?: string; // % 1RM objetivo (ej: "75%", "80%")
   setType?: SetType; // Tipo fisiológico de serie
+  customSetType?: string; // Nombre editable por el coach cuando setType === 'custom'
   coachCue?: string; 
   technicalCues?: string;
   videoUrl?: string;

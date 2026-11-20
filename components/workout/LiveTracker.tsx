@@ -674,7 +674,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
       )}
 
       {/* CAPA FORENSE ANTICAPTURA VISIBLE (PROPIEDAD INTELECTUAL) */}
-      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.14] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
+      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.06] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
         {Array.from({ length: 8 }).map((_, idx) => (
           <div key={idx} className={`whitespace-nowrap text-[10px] font-mono font-black tracking-[0.22em] text-center ${idx % 2 === 0 ? 'text-white' : 'text-red-500'}`}>
             {forensicStamp}
@@ -883,7 +883,15 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     )}
                     {ex.setType && ex.setType !== 'straight' && (
                       <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 rounded-lg text-[8px] font-black text-amber-300 uppercase">
-                        👑 {ex.setType.replace('_', ' ')}
+                        👑 {ex.setType === 'custom'
+                          ? (ex.customSetType?.trim() || 'Protocolo Coach')
+                          : ex.setType === 'eccentric'
+                          ? 'Excéntrica (Negativa)'
+                          : ex.setType === 'concentric'
+                          ? 'Concéntrica (Explosiva)'
+                          : ex.setType === 'isometric'
+                          ? 'Isométrica (Pausa)'
+                          : ex.setType.replace('_', ' ')}
                       </span>
                     )}
                   </div>
@@ -923,45 +931,6 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     </div>
                   )}
 
-                  {/* YOUTUBE EMBED PLAYER */}
-                  {ex.videoUrl && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Demostración Técnica 🎥</p>
-                        <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="text-[8px] text-red-400 hover:text-white uppercase font-bold">
-                          Abrir en YouTube ↗
-                        </a>
-                      </div>
-                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
-                        <iframe 
-                          className="absolute inset-0 w-full h-full" 
-                          src={getYoutubeEmbedUrl(ex.videoUrl)} 
-                          title={ex.name} 
-                          frameBorder="0" 
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                          allowFullScreen
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* BISERIE PAIR VIDEO */}
-                  {ex.pair?.videoUrl && (
-                    <div className="space-y-2 pt-2 border-t border-white/5">
-                      <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Video Bloque B: {ex.pair.name} 🎥</p>
-                      <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
-                        <iframe 
-                          className="absolute inset-0 w-full h-full" 
-                          src={getYoutubeEmbedUrl(ex.pair.videoUrl)} 
-                          title={ex.pair.name} 
-                          frameBorder="0" 
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                          allowFullScreen
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   {/* BOTÓN 1-TOQUE: IGUAL QUE LA SESIÓN ANTERIOR */}
                   {(() => {
                     const hasAnyGhost = rows.some(r => !!ghostMap[r.exerciseId]);
@@ -991,22 +960,21 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                     );
                   })()}
 
-                  {/* TRACKING ROWS (RESPONSIVO PARA CELULAR Y ESCRITORIO) */}
-                  <div className="space-y-2.5 pt-1">
-                    {rows.map((row, rIdx) => {
+                  {(() => {
+                    const renderTrackingRow = (row: TrackingRow, rKey: string | number) => {
                       const log = progress.workoutLogs.find(l => l.exerciseId === row.exerciseId && l.setIndex === row.globalIndex);
                       const rowGhost = ghostMap[row.exerciseId];
                       return (
                         <div 
-                          key={rIdx} 
+                          key={rKey} 
                           className={`flex items-center gap-2.5 sm:gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all ${
                             log ? 'bg-green-600/10 border-green-500/30' : 'bg-black/60 border-white/10 hover:border-white/20'
                           }`}
                         >
-                          <div className="w-12 sm:w-16 text-center shrink-0">
-                            <p className="text-[9px] font-black text-white/50 uppercase leading-tight">{row.label}</p>
-                            {row.exerciseName && row.exerciseName !== ex.name && (
-                              <p className="text-[8px] font-bold text-cyan-300/70 uppercase mt-0.5 truncate">{row.exerciseName}</p>
+                          <div className="w-16 sm:w-24 text-center shrink-0">
+                            <p className="text-[10px] font-black text-white/75 uppercase leading-tight">{row.label}</p>
+                            {row.exerciseName && (
+                              <p className="text-[8px] font-bold text-cyan-300/75 uppercase mt-0.5 break-words leading-tight">{row.exerciseName}</p>
                             )}
                           </div>
                           
@@ -1042,7 +1010,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                                     ? `${Math.round(refKg * 2.20462 * 10) / 10}`
                                     : `${refKg}`;
                                 })()} 
-                                className={`w-full bg-white/[0.04] rounded-xl px-2.5 py-2 text-base font-black outline-none border border-white/10 focus:border-red-500 transition-colors ${
+                                className={`w-full bg-white/[0.04] rounded-xl px-2.5 py-2 text-base font-black text-white outline-none border border-white/10 focus:border-red-500 transition-colors ${
                                   rowGhost ? 'placeholder-white/45' : 'placeholder-white/20'
                                 }`} 
                                 value={(() => {
@@ -1058,7 +1026,7 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                                 type="number" 
                                 inputMode="numeric"
                                 placeholder={rowGhost && rowGhost.reps > 0 ? `${rowGhost.reps}` : row.targetReps} 
-                                className={`w-full bg-white/[0.04] rounded-xl px-2 py-2 text-base font-black outline-none border border-white/10 text-center focus:border-red-500 transition-colors ${
+                                className={`w-full bg-white/[0.04] rounded-xl px-2 py-2 text-base font-black text-white outline-none border border-white/10 text-center focus:border-red-500 transition-colors ${
                                   rowGhost ? 'placeholder-white/45' : 'placeholder-white/20'
                                 }`} 
                                 value={progress.performanceData[row.exerciseId]?.reps[row.globalIndex] || ''} 
@@ -1078,8 +1046,146 @@ export const LiveTracker: React.FC<Props> = ({ workout, onFinish, onExit, user }
                           </button>
                         </div>
                       );
-                    })}
-                  </div>
+                    };
+
+                    const isMultiExerciseBlock = ['biserie', 'triserie', 'giant_set'].includes(ex.method || '') && !!ex.pair;
+
+                    if (isMultiExerciseBlock && ex.pair) {
+                      const rowsA = rows.filter(r => r.label.startsWith('A -'));
+                      const rowsB = rows.filter(r => r.label.startsWith('B -'));
+                      const chainItems = ex.supersetChain || [];
+                      const chainLetters = ['C', 'D', 'E', 'F', 'G'];
+
+                      return (
+                        <div className="space-y-5 pt-1">
+                          <div className="bg-blue-950/25 border border-blue-500/30 rounded-2xl px-3.5 py-2 text-[10px] font-bold text-blue-200 flex items-center gap-2">
+                            <span>🔁</span>
+                            <span>
+                              Alterna A → B{chainItems.length > 0 ? ` → ${chainLetters.slice(0, chainItems.length).join(' → ')}` : ''} por ronda. Sus pesos y series están organizados debajo de cada video.
+                            </span>
+                          </div>
+
+                          {/* BLOQUE A: VIDEO + SERIES DE A */}
+                          <div className="bg-white/[0.02] border border-white/10 rounded-3xl p-4 space-y-3">
+                            <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">
+                              Bloque A · {ex.name}
+                            </p>
+                            {ex.videoUrl && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Demostración Técnica A 🎥</p>
+                                  <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="text-[8px] text-red-400 hover:text-white uppercase font-bold">
+                                    Abrir en YouTube ↗
+                                  </a>
+                                </div>
+                                <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                                  <iframe 
+                                    className="absolute inset-0 w-full h-full" 
+                                    src={getYoutubeEmbedUrl(ex.videoUrl)} 
+                                    title={ex.name} 
+                                    frameBorder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowFullScreen
+                                  />
+                                </div>
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              {rowsA.map((row, idx) => renderTrackingRow(row, `A-${idx}`))}
+                            </div>
+                          </div>
+
+                          {/* BLOQUE B: VIDEO + SERIES DE B */}
+                          <div className="bg-blue-950/15 border border-blue-500/25 rounded-3xl p-4 space-y-3">
+                            <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                              Bloque B · {ex.pair.name}
+                            </p>
+                            {ex.pair.videoUrl && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-[8px] font-black text-blue-300/70 uppercase tracking-widest">Demostración Técnica B 🎥</p>
+                                  <a href={ex.pair.videoUrl} target="_blank" rel="noreferrer" className="text-[8px] text-blue-400 hover:text-white uppercase font-bold">
+                                    Abrir en YouTube ↗
+                                  </a>
+                                </div>
+                                <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                                  <iframe 
+                                    className="absolute inset-0 w-full h-full" 
+                                    src={getYoutubeEmbedUrl(ex.pair.videoUrl)} 
+                                    title={ex.pair.name} 
+                                    frameBorder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowFullScreen
+                                  />
+                                </div>
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              {rowsB.map((row, idx) => renderTrackingRow(row, `B-${idx}`))}
+                            </div>
+                          </div>
+
+                          {/* BLOQUES C, D, ... (TRISERIE / SERIE GIGANTE) */}
+                          {chainItems.map((sub, sIdx) => {
+                            const letter = chainLetters[sIdx] || `+${sIdx + 1}`;
+                            const letterRows = rows.filter(r => r.label.startsWith(`${letter} -`));
+                            if (letterRows.length === 0) return null;
+                            return (
+                              <div key={sIdx} className="bg-indigo-950/15 border border-indigo-500/25 rounded-3xl p-4 space-y-3">
+                                <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">
+                                  Bloque {letter} · {sub.name}
+                                </p>
+                                {sub.videoUrl && (
+                                  <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                                    <iframe 
+                                      className="absolute inset-0 w-full h-full" 
+                                      src={getYoutubeEmbedUrl(sub.videoUrl)} 
+                                      title={sub.name} 
+                                      frameBorder="0" 
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                      allowFullScreen
+                                    />
+                                  </div>
+                                )}
+                                <div className="space-y-2">
+                                  {letterRows.map((row, idx) => renderTrackingRow(row, `${letter}-${idx}`))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <>
+                        {ex.videoUrl && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Demostración Técnica 🎥</p>
+                              <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="text-[8px] text-red-400 hover:text-white uppercase font-bold">
+                                Abrir en YouTube ↗
+                              </a>
+                            </div>
+                            <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                              <iframe 
+                                className="absolute inset-0 w-full h-full" 
+                                src={getYoutubeEmbedUrl(ex.videoUrl)} 
+                                title={ex.name} 
+                                frameBorder="0" 
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                allowFullScreen
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2.5 pt-1">
+                          {rows.map((row, rIdx) => renderTrackingRow(row, rIdx))}
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* NOTAS RÁPIDAS DEL ATLETA POR EJERCICIO (SIN IA · 0 TOKENS · SUPABASE) */}
                   <QuickNotes

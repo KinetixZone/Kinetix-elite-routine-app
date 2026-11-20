@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Workout, Goal, UserLevel, CalendarEvent, SessionFeedback, WorkoutExercise } from '../../types/kinetix';
-import { storageService, generateUsernameFromName } from '../../services/storageService';
+import { storageService, generateUsernameFromName, AthleteIntegritySummary } from '../../services/storageService';
 import { calendarService } from '../../services/calendarService';
 import { aiService, COACH_QUICK_NOTES } from '../../services/aiService';
 import { ExerciseBlockEditor } from './ExerciseBlockEditor';
@@ -416,7 +416,7 @@ interface Props {
 export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [athletes, setAthletes] = useState<User[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<User | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vip' | 'coaches' | 'vacaciones' | 'expiring' | 'suspended'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'personalizados' | 'vip' | 'coaches' | 'vacaciones' | 'expiring' | 'suspended' | 'issues'>('all');
   const [athleteSearch, setAthleteSearch] = useState('');
   const [tab, setTab] = useState<'profile' | 'calendar' | 'history'>('profile'); 
   const [editingInstance, setEditingInstance] = useState<Workout | null>(null);
@@ -426,6 +426,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
   const [calendarTrigger, setCalendarTrigger] = useState(0); 
   const [copiedKey, setCopiedKey] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [isRepairingAthleteAudit, setIsRepairingAthleteAudit] = useState(false);
   
   // Asignación & Propagación
   const [assigningDate, setAssigningDate] = useState<string | null>(null);
@@ -690,6 +691,44 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     setTimeout(() => setToastMsg(null), 4000);
   };
 
+  const allExercises = useMemo(() => storageService.getExercises(), [calendarTrigger]);
+
+  const athleteAuditMap = useMemo<Record<string, AthleteIntegritySummary>>(() => {
+    const logs = storageService.getAllLogs();
+    const calendar = calendarService.getEvents();
+    const ctx = {
+      exercises: allExercises,
+      logs,
+      calendar
+    };
+    const map: Record<string, AthleteIntegritySummary> = {};
+    athletes.forEach(a => {
+      map[a.id] = storageService.getAthleteIntegritySummary(a.id, ctx);
+    });
+    return map;
+  }, [athletes, allExercises, calendarTrigger, templates]);
+
+  const athletesWithIssuesCount = useMemo(
+    () => Object.values(athleteAuditMap).filter(s => s.totalIssues > 0).length,
+    [athleteAuditMap]
+  );
+
+  const selectedAudit = selectedAthlete ? athleteAuditMap[selectedAthlete.id] : undefined;
+
+  const handleRepairSelectedAudit = async () => {
+    setIsRepairingAthleteAudit(true);
+    const res = await storageService.autoRepairOrphanExercises({ markUnresolved: true, cloud: true });
+    await Promise.all([loadTemplates(), storageService.syncLogsFromCloud()]);
+    setCalendarTrigger(t => t + 1);
+    setIsRepairingAthleteAudit(false);
+    setToastMsg(
+      res.totalRepaired > 0 || res.markedUnavailable > 0
+        ? `✓ Auditoría reparada: ${res.totalRepaired} vínculo(s) restaurado(s), ${res.markedUnavailable} marcado(s) para reasignar.`
+        : '✓ Revisión completa: no quedaron ejercicios huérfanos reparables pendientes.'
+    );
+    setTimeout(() => setToastMsg(null), 4500);
+  };
+
   const filteredAthletes = useMemo(() => {
       const q = athleteSearch.trim().toLowerCase();
       return athletes.filter(a => {
@@ -700,6 +739,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
             if (!matchName && !matchUser && !matchMail) return false;
           }
           if (filter === 'all') return true;
+          if (filter === 'issues') return (athleteAuditMap[a.id]?.totalIssues || 0) > 0;
           if (filter === 'active') return a.isActive !== false;
           if (filter === 'suspended') return a.isActive === false;
           if (filter === 'vip') return !!a.isUnlimited && a.role !== 'coach';
@@ -717,7 +757,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
           }
           return true;
       });
-  }, [athletes, filter, athleteSearch]);
+  }, [athletes, filter, athleteSearch, athleteAuditMap]);
 
   const handleUpdateUser = async (updates: Partial<User>) => {
       if (!selectedAthlete) return;
@@ -816,8 +856,6 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const allExercises = useMemo(() => storageService.getExercises(), []);
-
   const isAthleteExpired = (a: User) => storageService.isMembershipExpired(a);
 
   return (
@@ -893,6 +931,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
         <div className="flex bg-white/5 rounded-2xl p-1 gap-1 overflow-x-auto no-scrollbar">
              {[
                { id: 'all', label: 'Todos' },
+               ...(athletesWithIssuesCount > 0 ? [{ id: 'issues', label: `⚠️ Incidencias (${athletesWithIssuesCount})` }] : []),
                { id: 'personalizados', label: '⭐ Jorge 1-on-1' },
                { id: 'vip', label: '∞ Sin Corte' },
                { id: 'coaches', label: '🛡️ Coaches' },
@@ -904,7 +943,7 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                <button 
                  key={f.id} 
                  onClick={() => setFilter(f.id as any)} 
-                 className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase whitespace-nowrap transition-all ${filter === f.id ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                 className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase whitespace-nowrap transition-all ${filter === f.id ? (f.id === 'issues' ? 'bg-amber-400 text-black' : 'bg-white text-black') : f.id === 'issues' ? 'text-amber-300 hover:text-amber-200' : 'text-white/40 hover:text-white'}`}
                >
                  {f.label}
                </button>
@@ -913,11 +952,24 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
         <div className="space-y-3 lg:overflow-y-auto custom-scrollbar lg:max-h-[calc(100vh-260px)] lg:pr-1">
           {filteredAthletes.map(athlete => {
              const expired = isAthleteExpired(athlete);
+             const audit = athleteAuditMap[athlete.id];
              return (
-               <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-4 md:p-5 rounded-[22px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
+               <div key={athlete.id} onClick={() => { setSelectedAthlete(athlete); setConfirmDeleteAthleteId(null); }} className={`p-4 md:p-5 rounded-[22px] border cursor-pointer transition-all hover:scale-[1.01] ${selectedAthlete?.id === athlete.id ? 'bg-white text-black border-white shadow-xl' : audit && audit.totalIssues > 0 ? 'bg-[#12100C] border-amber-500/35 hover:border-amber-400/60' : 'bg-[#0F0F11] border-white/5 hover:border-white/20'}`}>
                   <div className="flex justify-between items-start gap-2">
                       <h3 className="text-base md:text-lg font-black uppercase italic tracking-tight mb-0.5 break-words leading-snug">{athlete.name}</h3>
                       <div className="flex items-center gap-1 flex-wrap justify-end shrink-0">
+                        {audit && audit.totalIssues > 0 && (
+                          <span
+                            title={audit.details.join('\n')}
+                            className={`text-[7px] font-black px-2 py-0.5 rounded-full uppercase border ${
+                              selectedAthlete?.id === athlete.id
+                                ? 'bg-amber-500 text-black border-amber-600'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}
+                          >
+                            ⚠️ {audit.totalIssues} {audit.totalIssues === 1 ? 'Incidencia' : 'Incidencias'}
+                          </span>
+                        )}
                         {athlete.role === 'coach' && (
                           <span className="text-[7px] font-black px-2 py-0.5 rounded-full uppercase bg-purple-500/20 text-purple-400">COACH</span>
                         )}
@@ -1080,8 +1132,60 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
            <div className="flex gap-4 md:gap-6 mb-5 border-b border-white/5 overflow-x-auto no-scrollbar">
               <button onClick={() => setTab('profile')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'profile' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Ficha & Control</button>
               <button onClick={() => setTab('calendar')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'calendar' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Calendario / Edición</button>
-              <button onClick={() => setTab('history')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all ${tab === 'history' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>Historial & RPE 📊</button>
+              <button onClick={() => setTab('history')} className={`pb-2.5 text-[10px] font-black uppercase tracking-widest border-b-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${tab === 'history' ? 'border-red-600 text-white' : 'border-transparent text-white/40 hover:text-white'}`}>
+                <span>Historial & RPE 📊</span>
+                {selectedAudit && selectedAudit.totalIssues > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[8px] font-black">
+                    {selectedAudit.totalIssues}
+                  </span>
+                )}
+              </button>
            </div>
+
+           {/* INDICADOR DE AUDITORÍA PERSONAL (HUÉRFANOS / INCIDENCIAS PENDIENTES) */}
+           {selectedAudit && selectedAudit.totalIssues > 0 && (
+             <div className="mb-5 bg-amber-950/35 border border-amber-500/40 rounded-3xl p-4 sm:p-5 space-y-3 animate-in fade-in">
+               <div className="flex flex-wrap items-center justify-between gap-3">
+                 <div className="space-y-0.5">
+                   <p className="text-[11px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                     <span>⚠️</span> Auditoría del Atleta: {selectedAudit.totalIssues} incidencia{selectedAudit.totalIssues > 1 ? 's' : ''} pendiente{selectedAudit.totalIssues > 1 ? 's' : ''}
+                   </p>
+                   <p className="text-[10px] text-amber-100/75">
+                     {selectedAudit.orphanLogsCount > 0 ? `${selectedAudit.orphanLogsCount} ejercicio(s) huérfano(s) en histórico · ` : ''}
+                     {selectedAudit.orphanRoutinesCount > 0 ? `${selectedAudit.orphanRoutinesCount} bloque(s) sin vínculo en rutinas · ` : ''}
+                     {selectedAudit.emptyRoutinesCount > 0 ? `${selectedAudit.emptyRoutinesCount} sesión(es) vacía(s)` : ''}
+                   </p>
+                 </div>
+                 <div className="flex flex-wrap items-center gap-2">
+                   <button
+                     type="button"
+                     disabled={isRepairingAthleteAudit}
+                     onClick={handleRepairSelectedAudit}
+                     className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-[9px] font-black uppercase tracking-wider transition-all"
+                   >
+                     {isRepairingAthleteAudit ? 'Reparando...' : '🔧 Auto-Reparar Huérfanos'}
+                   </button>
+                   {selectedAudit.orphanRoutinesCount > 0 && tab !== 'calendar' && (
+                     <button
+                       type="button"
+                       onClick={() => setTab('calendar')}
+                       className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                     >
+                       Ir a Calendario →
+                     </button>
+                   )}
+                 </div>
+               </div>
+               <ul className="space-y-1 pl-1 text-[10px] text-amber-100/80">
+                 {selectedAudit.details.slice(0, 4).map((det, idx) => (
+                   <li key={idx} className="leading-snug">• {det}</li>
+                 ))}
+                 {selectedAudit.details.length > 4 && (
+                   <li className="text-amber-300/75 font-bold">+ {selectedAudit.details.length - 4} más...</li>
+                 )}
+               </ul>
+             </div>
+           )}
 
            <div className="space-y-6">
               {tab === 'profile' && (
@@ -1530,13 +1634,17 @@ export const AthleteCRM: React.FC<Props> = ({ onSwitchUser, currentUser }) => {
                                         <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Ejecución del Entrenamiento:</p>
                                         <div className="grid grid-cols-1 gap-2 pl-2 border-l border-white/5">
                                             {Array.from(new Set(session.logs.map(l => l.exerciseId))).map(exId => {
-                                                const exName = storageService.getExercises().find(ex => ex.id === exId)?.name || exId;
+                                                const matchedEx = allExercises.find(ex => ex.id === exId);
+                                                const resolvedFallbackId = !matchedEx ? storageService.resolveExerciseId(exId, undefined, allExercises) : undefined;
+                                                const resolvedEx = resolvedFallbackId ? allExercises.find(ex => ex.id === resolvedFallbackId) : undefined;
+                                                const isOrphan = !matchedEx && !resolvedEx && exId !== 'kinetix-class-log';
+                                                const exName = matchedEx?.name || resolvedEx?.name || (exId === 'kinetix-class-log' ? 'Sesión Presencial / Clase' : `⚠️ Ejercicio no disponible (${exId})`);
                                                 const exerciseLogs = session.logs.filter(l => l.exerciseId === exId).sort((a, b) => a.setIndex - b.setIndex);
                                                 const realSets = exerciseLogs.filter(l => Number(l.weight) > 0 || Number(l.reps) > 0);
                                                 const exQuickNote = exerciseLogs.find(l => l.notes && l.notes.trim())?.notes;
                                                 return (
                                                     <div key={exId} className="text-xs space-y-1">
-                                                        <span className="font-black text-white/80 uppercase italic text-[10px] block">↳ {exName}</span>
+                                                        <span className={`font-black uppercase italic text-[10px] block ${isOrphan ? 'text-amber-300' : 'text-white/80'}`}>↳ {exName}</span>
                                                         {realSets.length > 0 && (
                                                           <div className="flex flex-wrap gap-2">
                                                               {realSets.map((l, sIdx) => (

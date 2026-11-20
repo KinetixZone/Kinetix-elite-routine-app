@@ -1,5 +1,5 @@
 
-import { User, Workout, WorkoutLog, Exercise, BodyMetric, Goal, UserLevel, WorkoutExercise, PRRecord } from '../types/kinetix';
+import { User, Workout, WorkoutLog, Exercise, BodyMetric, Goal, UserLevel, WorkoutExercise, PRRecord, CalendarEvent } from '../types/kinetix';
 import { EXERCISES_DB } from '../constants/exercises';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -111,6 +111,16 @@ export interface MuscleStatus {
   zone: string;
   status: 'fatigued' | 'recovering' | 'optimal';
   level: number;
+}
+
+export interface AthleteIntegritySummary {
+  athleteId: string;
+  orphanLogsCount: number;
+  orphanRoutinesCount: number;
+  emptyRoutinesCount: number;
+  repairableCount: number;
+  totalIssues: number;
+  details: string[];
 }
 
 export interface AthleteInsight {
@@ -2229,6 +2239,151 @@ class StorageService {
       markedUnavailable,
       totalRepaired,
       cloudSynced
+    };
+  }
+
+  getAthleteIntegritySummary(
+    athleteId: string,
+    ctx?: {
+      exercises?: Exercise[];
+      templates?: Workout[];
+      logs?: WorkoutLog[];
+      calendar?: CalendarEvent[];
+    }
+  ): AthleteIntegritySummary {
+    const exercises = ctx?.exercises || this.getExercises();
+    const exerciseIdSet = new Set<string>([
+      ...exercises.map(e => e.id),
+      ...EXERCISES_DB.map(e => e.id)
+    ]);
+    const logs = ctx?.logs || this.getAllLogs();
+    const templates: Workout[] =
+      ctx?.templates ||
+      (() => {
+        try {
+          return JSON.parse(localStorage.getItem(KEYS.WORKOUT_TEMPLATES) || '[]');
+        } catch {
+          return [];
+        }
+      })();
+    const calendar: CalendarEvent[] =
+      ctx?.calendar ||
+      (() => {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(KEYS.CALENDAR) || '[]');
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })();
+
+    const details: string[] = [];
+    const seenOrphanLogIds = new Set<string>();
+    let orphanLogsCount = 0;
+    let orphanRoutinesCount = 0;
+    let emptyRoutinesCount = 0;
+    let repairableCount = 0;
+
+    logs.forEach(l => {
+      if (l.athleteId !== athleteId) return;
+      const exId = l.exerciseId || '';
+      if (
+        !exId ||
+        exId === 'kinetix-class-log' ||
+        exId === 'kinetix-session-done' ||
+        exId === 'kinetix-session-reopen'
+      ) {
+        return;
+      }
+      if (!exerciseIdSet.has(exId) && !seenOrphanLogIds.has(exId)) {
+        seenOrphanLogIds.add(exId);
+        orphanLogsCount++;
+        const resolved = this.resolveExerciseId(exId, undefined, exercises);
+        if (resolved) {
+          repairableCount++;
+          details.push(`Histórico con ID legado "${exId}" (auto-reparable → ${resolved}).`);
+        } else {
+          details.push(`Histórico con ejercicio huérfano "${exId}".`);
+        }
+      }
+    });
+
+    const athleteCalendarTplIds = new Set(
+      calendar
+        .filter(e => Array.isArray(e.athleteIds) && e.athleteIds.includes(athleteId) && e.workoutTemplateId)
+        .map(e => String(e.workoutTemplateId))
+    );
+
+    const seenRoutineIssues = new Set<string>();
+    const todayStr = this.getServerTodayIsoSync();
+
+    templates.forEach(tpl => {
+      if (!tpl || tpl.id === SYS_BRANDING_ROW_ID || tpl.id === SYS_EXERCISES_ROW_ID) return;
+      const belongsToAthlete = tpl.assignedTo === athleteId || athleteCalendarTplIds.has(tpl.id);
+      if (!belongsToAthlete) return;
+
+      const blocks = Array.isArray(tpl.exercises) ? tpl.exercises : [];
+      const schedDate = tpl.scheduledDate ? String(tpl.scheduledDate).slice(0, 10) : '';
+      if (tpl.isTemplate === false && blocks.length === 0 && (!schedDate || schedDate >= todayStr)) {
+        emptyRoutinesCount++;
+        details.push(`Sesión asignada sin ejercicios: "${tpl.name || tpl.id}".`);
+      }
+
+      blocks.forEach(block => {
+        if (block?.exerciseId && (block.isUnavailable || !exerciseIdSet.has(block.exerciseId))) {
+          const sig = `${tpl.id}:A:${block.exerciseId}`;
+          if (!seenRoutineIssues.has(sig)) {
+            seenRoutineIssues.add(sig);
+            orphanRoutinesCount++;
+            const resolved = this.resolveExerciseId(block.exerciseId, block.name, exercises);
+            if (resolved) {
+              repairableCount++;
+              details.push(`Rutina "${tpl.name}": "${block.name || block.exerciseId}" reparable → ${resolved}.`);
+            } else {
+              details.push(`Rutina "${tpl.name}": "${block.name || block.exerciseId}" no disponible en biblioteca.`);
+            }
+          }
+        }
+        if (block?.pair?.exerciseId && !exerciseIdSet.has(block.pair.exerciseId)) {
+          const sig = `${tpl.id}:B:${block.pair.exerciseId}`;
+          if (!seenRoutineIssues.has(sig)) {
+            seenRoutineIssues.add(sig);
+            orphanRoutinesCount++;
+            const resolved = this.resolveExerciseId(block.pair.exerciseId, block.pair.name, exercises);
+            if (resolved) {
+              repairableCount++;
+              details.push(`Rutina "${tpl.name}" (B): "${block.pair.name || block.pair.exerciseId}" reparable.`);
+            } else {
+              details.push(`Rutina "${tpl.name}" (B): "${block.pair.name || block.pair.exerciseId}" no disponible.`);
+            }
+          }
+        }
+        if (Array.isArray(block?.supersetChain)) {
+          block.supersetChain.forEach((sub, idx) => {
+            if (sub?.exerciseId && !exerciseIdSet.has(sub.exerciseId)) {
+              const sig = `${tpl.id}:C${idx}:${sub.exerciseId}`;
+              if (!seenRoutineIssues.has(sig)) {
+                seenRoutineIssues.add(sig);
+                orphanRoutinesCount++;
+                const resolved = this.resolveExerciseId(sub.exerciseId, sub.name, exercises);
+                if (resolved) repairableCount++;
+                details.push(`Rutina "${tpl.name}" (C+): "${sub.name || sub.exerciseId}" sin vínculo en biblioteca.`);
+              }
+            }
+          });
+        }
+      });
+    });
+
+    const totalIssues = orphanLogsCount + orphanRoutinesCount + emptyRoutinesCount;
+    return {
+      athleteId,
+      orphanLogsCount,
+      orphanRoutinesCount,
+      emptyRoutinesCount,
+      repairableCount,
+      totalIssues,
+      details
     };
   }
 

@@ -186,6 +186,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
           (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
         );
       const totalTonnage = todayLogs.reduce((acc, l) => acc + (Number(l.weight || 0) * Number(l.reps || 0)), 0);
+      const topWeightKg = todayLogs.reduce((max, l) => Math.max(max, Number(l.weight || 0)), 0);
+      const totalReps = todayLogs.reduce((acc, l) => acc + Number(l.reps || 0), 0);
       const totalSets = todayLogs.length;
       const rpe = todayLogs.find(l => l.feedback?.rpe)?.feedback?.rpe;
       const muscleFocus = getWorkoutMuscleFocus(
@@ -195,6 +197,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
       return {
           hasLogs: todayLogs.length > 0,
           tonnage: totalTonnage,
+          topWeightKg,
+          totalReps,
           sets: totalSets,
           muscleFocus,
           rpe
@@ -286,7 +290,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
       onCut={(e) => e.preventDefault()}
     >
       {/* MARCA DE AGUA FORENSE VISIBLE ANTICAPTURA */}
-      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.14] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
+      <div className="fixed inset-0 pointer-events-none z-30 opacity-[0.06] overflow-hidden select-none flex flex-col justify-around rotate-[-20deg] scale-125">
         {Array.from({ length: 8 }).map((_, idx) => (
           <div key={idx} className={`whitespace-nowrap text-[10px] font-mono font-black tracking-[0.22em] text-center ${idx % 2 === 0 ? 'text-white' : 'text-red-500'}`}>
             {forensicStamp}
@@ -490,16 +494,30 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
 
                         <div className="grid grid-cols-3 gap-3">
                             <div className="bg-black/60 p-4 rounded-2xl border border-white/10 text-center">
-                                <p className="text-[10px] font-bold uppercase text-white/40">Tonelaje</p>
+                                <p className="text-[10px] font-bold uppercase text-white/40">Carga Máxima</p>
                                 <p className="text-xl font-black text-cyan-400 tabular-nums mt-1">
-                                    {todaySummary.tonnage > 0 ? `${todaySummary.tonnage.toLocaleString()} kg` : '—'}
+                                    {todaySummary.topWeightKg > 0
+                                      ? unitPref === 'lbs'
+                                        ? `${Math.round(todaySummary.topWeightKg * 2.20462 * 10) / 10} lbs`
+                                        : `${todaySummary.topWeightKg} kg`
+                                      : 'Peso Corporal'}
                                 </p>
+                                {todaySummary.tonnage > 0 && (
+                                  <p className="text-[9px] text-white/40 mt-0.5 tabular-nums">
+                                    Volumen: {todaySummary.tonnage.toLocaleString()} kg
+                                  </p>
+                                )}
                             </div>
                             <div className="bg-black/60 p-4 rounded-2xl border border-white/10 text-center">
-                                <p className="text-[10px] font-bold uppercase text-white/40">Series</p>
+                                <p className="text-[10px] font-bold uppercase text-white/40">Series · Reps</p>
                                 <p className="text-xl font-black text-white tabular-nums mt-1">
                                     {todaySummary.sets || '—'}
                                 </p>
+                                {todaySummary.totalReps > 0 && (
+                                  <p className="text-[9px] text-white/40 mt-0.5 tabular-nums">
+                                    {todaySummary.totalReps} reps totales
+                                  </p>
+                                )}
                             </div>
                             <div className="bg-black/60 p-4 rounded-2xl border border-white/10 text-center">
                                 <p className="text-[10px] font-bold uppercase text-white/40">Esfuerzo</p>

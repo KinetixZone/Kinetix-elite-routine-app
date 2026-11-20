@@ -141,13 +141,41 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
       { id: 'emom', label: 'EMOM', color: 'bg-cyan-500', icon: '⚡' },
   ];
 
+  const applyFirstSetToAll = (
+    field: 'targetLoad' | 'targetReps',
+    target: 'primary' | 'pair' | 'chain',
+    chainIdx = 0
+  ) => {
+    const count = Math.max(1, exercise.targetSets || 1);
+    if (target === 'primary') {
+      const firstVal = (exercise[field] || '').split(',')[0]?.trim() || (field === 'targetLoad' ? '0' : '10');
+      handleUpdate({ [field]: Array(count).fill(firstVal).join(', ') });
+      return;
+    }
+    if (target === 'pair' && exercise.pair) {
+      const firstVal = (exercise.pair[field] || '').split(',')[0]?.trim() || (field === 'targetLoad' ? '0' : '10');
+      handleUpdate({ pair: { ...exercise.pair, [field]: Array(count).fill(firstVal).join(', ') } });
+      return;
+    }
+    if (target === 'chain' && exercise.supersetChain?.[chainIdx]) {
+      const chain = [...exercise.supersetChain];
+      const firstVal = (chain[chainIdx][field] || '').split(',')[0]?.trim() || (field === 'targetLoad' ? '0' : '10');
+      chain[chainIdx] = { ...chain[chainIdx], [field]: Array(count).fill(firstVal).join(', ') };
+      handleUpdate({ supersetChain: chain });
+    }
+  };
+
   const SET_TYPES: { id: SetType; label: string; desc: string }[] = [
     { id: 'straight', label: 'Serie Normal', desc: 'Carga de trabajo regular' },
+    { id: 'eccentric', label: 'Excéntrica (Énfasis Negativo)', desc: 'Control lento en fase de descenso / frenado' },
+    { id: 'concentric', label: 'Concéntrica (Explosiva)', desc: 'Aceleración máxima en fase de empuje/tracción' },
+    { id: 'isometric', label: 'Isométrica (Pausa / Sostenida)', desc: 'Mantener tensión sin movimiento articular' },
     { id: 'top_set', label: 'Top Set', desc: 'Serie principal de máxima carga' },
     { id: 'back_off', label: 'Back-off Set', desc: 'Descarga de volumen (-10-15%)' },
-    { id: 'warmup', label: 'Aproximación/PAP', desc: 'Preparación neuromuscular' },
+    { id: 'warmup', label: 'Aproximación / PAP', desc: 'Preparación neuromuscular' },
     { id: 'amrap', label: 'Al Fallo (AMRAP)', desc: 'RIR 0 - Máximas repeticiones' },
-    { id: 'rest_pause', label: 'Rest-Pause', desc: 'Micro-descansos 15-20s' }
+    { id: 'rest_pause', label: 'Rest-Pause', desc: 'Micro-descansos 15-20s' },
+    { id: 'custom', label: '✏️ Personalizado (Coach)', desc: 'Nombre o protocolo libre definido por ti' }
   ];
 
   const activeVideoUrl = exercise.videoUrl || allExercises.find(x => x.id === exercise.exerciseId)?.videoUrl;
@@ -406,7 +434,16 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
                 >
                   {SET_TYPES.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
                 </select>
-                <p className="text-[7px] text-white/30 truncate">{SET_TYPES.find(st => st.id === (exercise.setType || 'straight'))?.desc}</p>
+                {exercise.setType === 'custom' && (
+                  <input
+                    type="text"
+                    className="w-full bg-black/80 border border-cyan-500/40 rounded-xl px-3 py-2 text-xs font-bold text-cyan-300 outline-none focus:border-cyan-400 mt-1"
+                    placeholder="Ej: Excéntrica 4s + Pausa 2s"
+                    value={exercise.customSetType || ''}
+                    onChange={e => handleUpdate({ customSetType: e.target.value })}
+                  />
+                )}
+                <p className="text-[7px] text-white/30 leading-snug">{SET_TYPES.find(st => st.id === (exercise.setType || 'straight'))?.desc}</p>
               </div>
 
               {/* RIR / RPE OBJETIVO */}
@@ -492,7 +529,63 @@ export const ExerciseBlockEditor: React.FC<Props> = ({ exercise, onUpdate, avail
 
         {/* MATRIZ DE RENDIMIENTO (STD / AHAP / BISERIE / TRISERIE / GIGANTE / DROPSET / TOPSET / RESTPAUSE) */}
         {(['standard', 'ahap', 'biserie', 'triserie', 'giant_set', 'dropset', 'topset_backoff', 'restpause', 'clusters'].includes(exercise.method || '')) && (
-            <div className="bg-black/40 p-6 rounded-[32px] border border-white/5">
+            <div className="bg-black/40 p-6 rounded-[32px] border border-white/5 space-y-4">
+                {(exercise.targetSets || 1) > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/5">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-white/45">
+                      ⚡ Rellenado rápido desde Set 1 (editable por serie)
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyFirstSetToAll('targetLoad', 'primary')}
+                        className="px-3 py-1.5 rounded-xl bg-yellow-500/15 hover:bg-yellow-500 text-yellow-400 hover:text-black border border-yellow-500/30 text-[9px] font-black uppercase tracking-wider transition-all"
+                        title="Copiar peso del Set 1 a todas las series de A"
+                      >
+                        ⇄ Mismo Peso A ({(exercise.targetLoad || '').split(',')[0]?.trim() || '0'} kg)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyFirstSetToAll('targetReps', 'primary')}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-white/75 hover:text-white border border-white/10 text-[9px] font-black uppercase tracking-wider transition-all"
+                        title="Copiar reps del Set 1 a todas las series de A"
+                      >
+                        ⇄ Mismas Reps A
+                      </button>
+                      {['biserie', 'triserie', 'giant_set'].includes(exercise.method || '') && exercise.pair && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => applyFirstSetToAll('targetLoad', 'pair')}
+                            className="px-3 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 text-[9px] font-black uppercase tracking-wider transition-all"
+                          >
+                            ⇄ Mismo Peso B ({(exercise.pair.targetLoad || '').split(',')[0]?.trim() || '0'} kg)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyFirstSetToAll('targetReps', 'pair')}
+                            className="px-3 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/30 text-blue-200 border border-blue-500/20 text-[9px] font-black uppercase tracking-wider transition-all"
+                          >
+                            ⇄ Reps B
+                          </button>
+                        </>
+                      )}
+                      {['triserie', 'giant_set'].includes(exercise.method || '') && (exercise.supersetChain || []).map((_, sIdx) => {
+                        const letter = ['C', 'D', 'E', 'F', 'G'][sIdx] || `+${sIdx + 1}`;
+                        return (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onClick={() => applyFirstSetToAll('targetLoad', 'chain', sIdx)}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500 text-indigo-300 hover:text-white border border-indigo-500/30 text-[9px] font-black uppercase tracking-wider transition-all"
+                          >
+                            ⇄ Mismo Peso {letter}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                     {Array.from({ length: exercise.targetSets || 1 }).map((_, i) => (
                         <div key={i} className={`shrink-0 ${exercise.method === 'dropset' ? 'w-64' : 'w-48'} space-y-3`}>

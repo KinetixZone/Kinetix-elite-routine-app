@@ -21,6 +21,7 @@ const RANK_SYSTEM = [
 ];
 
 export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId }) => {
+  const [selectedHeatmapDay, setSelectedHeatmapDay] = useState<{ date: string; intensity: number; sets: number; maxKg: number } | null>(null);
   // Data Fetching scoped strictly to active athlete, excluding system lock/reopen markers
   const logs = useMemo(() => {
     const all = storageService.getAllLogs().filter(
@@ -163,14 +164,22 @@ export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId 
       const dateStr = targetDate.toISOString().slice(0, 10);
       const dayLogs = logs.filter(l => storageService.getLogServerDateIso(l.timestamp) === dateStr);
       let setTotal = dayLogs.length;
-      if (dayLogs.some(l => l.exerciseId === 'kinetix-class-log')) setTotal += 15; 
+      if (dayLogs.some(l => l.exerciseId === 'kinetix-class-log')) setTotal += 15;
+      const maxKg = dayLogs.reduce((m, l) => Math.max(m, Number(l.weight || 0)), 0);
       days.push({
         date: dateStr,
+        sets: dayLogs.length,
+        maxKg,
         intensity: setTotal === 0 ? 0 : setTotal < 5 ? 1 : setTotal < 12 ? 2 : 3
       });
     }
     return days;
   }, [logs]);
+
+  const activeDays60d = useMemo(
+    () => heatmap.filter(d => d.intensity > 0).length,
+    [heatmap]
+  );
 
   const fatigueMetrics = useMemo(() => {
     if (logs.length < 5) return { index: 0, status: 'Sin Datos' };
@@ -270,23 +279,51 @@ export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId 
                 </div>
 
                 {/* HEATMAP */}
-                <div className="flex-[2] flex flex-col">
-                    <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                        Mapa de Calor (60D)
-                    </p>
+                <div className="flex-[2] flex flex-col justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                            Mapa de Calor (60D)
+                        </p>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
+                            {activeDays60d} {activeDays60d === 1 ? 'día activo' : 'días activos'} / 60
+                        </span>
+                    </div>
                     <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1.5 flex-1 content-center">
                         {heatmap.map((day, i) => (
-                        <div 
+                        <button
                             key={i}
-                            title={day.date}
-                            className={`aspect-square rounded-[2px] transition-all hover:scale-125 ${
-                            day.intensity === 0 ? 'bg-white/5' :
-                            day.intensity === 1 ? 'bg-red-900/40' :
-                            day.intensity === 2 ? 'bg-red-700/80' : 'bg-red-500 shadow-[0_0_5px_rgba(255,0,0,0.5)]'
+                            type="button"
+                            onClick={() => setSelectedHeatmapDay(day)}
+                            title={`${day.date} · ${day.sets} series`}
+                            className={`aspect-square rounded-[3px] transition-all hover:scale-125 focus:outline-none ${
+                              selectedHeatmapDay?.date === day.date ? 'ring-1 ring-white scale-110 ' : ''
+                            }${
+                              day.intensity === 0 ? 'bg-white/5' :
+                              day.intensity === 1 ? 'bg-red-900/45' :
+                              day.intensity === 2 ? 'bg-red-700/85' : 'bg-red-500 shadow-[0_0_5px_rgba(255,0,0,0.5)]'
                             }`}
                         />
                         ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[8px] font-bold uppercase tracking-wider text-white/40">
+                        <span className="text-white/60">
+                          {selectedHeatmapDay
+                            ? `${selectedHeatmapDay.date}: ${
+                                selectedHeatmapDay.sets > 0
+                                  ? `${selectedHeatmapDay.sets} series${selectedHeatmapDay.maxKg > 0 ? ` · Máx ${selectedHeatmapDay.maxKg} kg` : ''}`
+                                  : 'Día de descanso'
+                              }`
+                            : 'Toca un cuadro para ver fecha y carga'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span>Descanso</span>
+                          <span className="w-2.5 h-2.5 rounded-[2px] bg-white/5 inline-block" />
+                          <span className="w-2.5 h-2.5 rounded-[2px] bg-red-900/45 inline-block" />
+                          <span className="w-2.5 h-2.5 rounded-[2px] bg-red-700/85 inline-block" />
+                          <span className="w-2.5 h-2.5 rounded-[2px] bg-red-500 inline-block" />
+                          <span>Intenso</span>
+                        </div>
                     </div>
                 </div>
             </div>
