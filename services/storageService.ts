@@ -1158,6 +1158,39 @@ class StorageService {
 
   getPRs(athleteId?: string): PRRecord[] {
     try {
+      if (athleteId) {
+        const exercises = this.getExercises();
+        const bestMap = new Map<string, PRRecord>();
+        this.getAllLogs().forEach(l => {
+          if (l.athleteId !== athleteId) return;
+          if (
+            !l.exerciseId ||
+            l.exerciseId === 'kinetix-class-log' ||
+            l.exerciseId === 'kinetix-session-done' ||
+            l.exerciseId === 'kinetix-session-reopen'
+          ) {
+            return;
+          }
+          const w = Number(l.weight) || 0;
+          const r = Number(l.reps) || 0;
+          if (w <= 0 || r <= 0) return;
+          const est1RM = Math.round(w * (1 + r / 30) * 10) / 10;
+          const prev = bestMap.get(l.exerciseId);
+          if (!prev || est1RM > prev.estimated1RM) {
+            const exName = exercises.find(e => e.id === l.exerciseId)?.name || l.exerciseId;
+            bestMap.set(l.exerciseId, {
+              id: `pr-${athleteId}-${l.exerciseId}`,
+              exerciseId: l.exerciseId,
+              exerciseName: exName,
+              weight: w,
+              reps: r,
+              estimated1RM: est1RM,
+              date: this.getLogServerDateIso(l.timestamp) || ''
+            });
+          }
+        });
+        return Array.from(bestMap.values()).sort((a, b) => b.estimated1RM - a.estimated1RM);
+      }
       const data = localStorage.getItem(KEYS.PRS);
       const prs: PRRecord[] = data ? JSON.parse(data) : [];
       return prs;

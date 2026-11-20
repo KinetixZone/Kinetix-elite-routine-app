@@ -21,10 +21,15 @@ const RANK_SYSTEM = [
 ];
 
 export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId }) => {
-  // Data Fetching scoped to active athlete when provided
+  // Data Fetching scoped strictly to active athlete, excluding system lock/reopen markers
   const logs = useMemo(() => {
-    const all = storageService.getAllLogs();
-    return athleteId ? all.filter(l => !l.athleteId || l.athleteId === athleteId) : all;
+    const all = storageService.getAllLogs().filter(
+      l =>
+        l.exerciseId !== 'kinetix-session-done' &&
+        l.exerciseId !== 'kinetix-session-reopen' &&
+        (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+    );
+    return athleteId ? all.filter(l => l.athleteId === athleteId) : all;
   }, [athleteId]);
   const allExercises = useMemo(() => storageService.getExercises(), []);
 
@@ -57,20 +62,17 @@ export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId 
   }, [lifetimeVolume, currentRank, nextRank]);
 
   const activeStreak = useMemo(() => {
-      const rawDates = logs.map(l => l.timestamp.split('T')[0]);
-      const uniqueDates = rawDates
-        .filter((date, index, self) => self.indexOf(date) === index)
-        .sort()
-        .reverse();
+      const rawDates = logs
+        .map(l => storageService.getLogServerDateIso(l.timestamp))
+        .filter((d): d is string => !!d);
+      const uniqueDates = Array.from(new Set(rawDates)).sort().reverse();
       
       if (uniqueDates.length === 0) return 0;
 
-      const toLocalIso = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-      const now = new Date();
-      const today = toLocalIso(now);
-      const yesterdayDate = new Date(now);
-      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterday = toLocalIso(yesterdayDate);
+      const today = storageService.getServerTodayIsoSync();
+      const todayNoon = new Date(`${today}T12:00:00Z`);
+      const yesterdayNoon = new Date(todayNoon.getTime() - 86400000);
+      const yesterday = yesterdayNoon.toISOString().slice(0, 10);
 
       const lastWorkout = uniqueDates[0];
       if (lastWorkout !== today && lastWorkout !== yesterday) return 0;
@@ -135,7 +137,8 @@ export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId 
   const volumeData = useMemo(() => {
     const aggregation: Record<string, { vol: number, isClass: boolean }> = {};
     logs.forEach(log => {
-      const dateKey = log.timestamp.split('T')[0];
+      const dateKey = storageService.getLogServerDateIso(log.timestamp);
+      if (!dateKey) return;
       const isVenueLog = log.exerciseId === 'kinetix-class-log';
       let volume = 0;
       if (isVenueLog) volume = 10000;
@@ -147,19 +150,18 @@ export const ProgressDashboard: React.FC<{ athleteId?: string }> = ({ athleteId 
     });
 
     return Object.entries(aggregation)
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .slice(-7);
   }, [logs]);
 
   const heatmap = useMemo(() => {
     const days = [];
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayIso = storageService.getServerTodayIsoSync();
+    const todayNoon = new Date(`${todayIso}T12:00:00Z`);
     for (let i = 59; i >= 0; i--) {
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() - i);
-      const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
-      const dayLogs = logs.filter(l => l.timestamp.startsWith(dateStr));
+      const targetDate = new Date(todayNoon.getTime() - i * 86400000);
+      const dateStr = targetDate.toISOString().slice(0, 10);
+      const dayLogs = logs.filter(l => storageService.getLogServerDateIso(l.timestamp) === dateStr);
       let setTotal = dayLogs.length;
       if (dayLogs.some(l => l.exerciseId === 'kinetix-class-log')) setTotal += 15; 
       days.push({

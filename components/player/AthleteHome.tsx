@@ -72,8 +72,11 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
   const [tabForward, setTabForward] = useState<Array<'train' | 'progress' | 'profile'>>([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDayIdx, setSelectedDayIdx] = useState<number | null>(null);
-  const [prsList] = useState<PRRecord[]>(() => storageService.getPRs());
   const [unitPref, setUnitPref] = useState<'kg' | 'lbs'>(user.preferredUnit || 'kg');
+  const prsList = useMemo<PRRecord[]>(
+    () => storageService.getPRs(user.id),
+    [user.id, activeTab, currentWorkout]
+  );
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -157,6 +160,7 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     setIsSavingPwd(false);
     if (res.ok) {
       const updated = { ...user, password: newPwd.trim() };
+      storageService.saveUser(updated);
       onUserUpdate?.(updated);
       setNewPwd('');
       setConfirmPwd('');
@@ -268,6 +272,8 @@ export const AthleteHome: React.FC<Props> = ({ user, currentWorkout, onStartSess
     setUnitPref(u);
     const updatedUser = { ...user, preferredUnit: u };
     storageService.saveUser(updatedUser);
+    onUserUpdate?.(updatedUser);
+    void storageService.upsertAthleteCloud(updatedUser);
   };
 
   const forensicStamp = `🔒 KINETIX • LIC. JORGE GONZÁLEZ • ${user.name.toUpperCase()} • ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;

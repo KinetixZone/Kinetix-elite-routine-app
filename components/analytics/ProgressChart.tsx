@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { WorkoutLog } from '../../types/kinetix';
+import { storageService } from '../../services/storageService';
 
 interface ProgressChartProps {
   logs: WorkoutLog[];
@@ -36,13 +37,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export const ProgressChart: React.FC<ProgressChartProps> = ({ logs, athleteId }) => {
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    const filteredLogs = athleteId ? logs.filter(l => !l.athleteId || l.athleteId === athleteId) : logs;
+    const filteredLogs = logs.filter(l =>
+      (!athleteId || l.athleteId === athleteId) &&
+      l.exerciseId !== 'kinetix-session-done' &&
+      l.exerciseId !== 'kinetix-session-reopen' &&
+      (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log')
+    );
     
-    // Group by day (YYYY-MM-DD)
+    // Group by day (YYYY-MM-DD in server TZ)
     const map = new Map<string, { tonnage: number; sets: number; reps: number }>();
 
     filteredLogs.forEach(log => {
-      const dateKey = log.timestamp ? log.timestamp.split('T')[0] : new Date().toISOString().split('T')[0];
+      const dateKey = storageService.getLogServerDateIso(log.timestamp) || storageService.getServerTodayIsoSync();
       const weight = Number(log.weight) || 0;
       const reps = Number(log.reps) || 0;
       const isClass = log.exerciseId === 'kinetix-class-log';

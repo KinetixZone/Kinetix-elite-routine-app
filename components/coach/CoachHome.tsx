@@ -81,8 +81,8 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
                   </p>
               </div>
            </div>
-           <h1 className="text-4xl sm:text-5xl md:text-8xl font-black uppercase italic tracking-tighter text-white leading-[0.92]">
-              LIVE <span className="text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-900 block md:inline">OPERATIONS</span>
+           <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black uppercase italic tracking-tight text-white leading-[0.95] pr-3 md:pr-5">
+              LIVE <span className="inline-block pr-4 md:pr-6 text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-900">OPERATIONS</span>
            </h1>
         </div>
         {(currentUser?.role === 'owner' || currentUser?.role === 'admin') && (
@@ -248,13 +248,42 @@ export const CoachHome: React.FC<{ onViewChange: (view: any) => void; currentUse
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-                <div onClick={() => onViewChange('manager')} className="bg-[#0F0F11] border border-white/5 p-6 rounded-[35px] hover:border-white/20 transition-all cursor-pointer">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Rutinas Master</p>
-                    <p className="text-3xl font-black italic tabular-nums">{templates.length}</p>
+                <div onClick={() => onViewChange('crm')} className="bg-[#0F0F11] border border-emerald-500/20 p-6 rounded-[35px] hover:border-emerald-500/40 transition-all cursor-pointer">
+                    <p className="text-[8px] font-black text-emerald-400/80 uppercase tracking-widest mb-1">Entrenaron Hoy</p>
+                    <p className="text-3xl font-black italic tabular-nums text-emerald-300">
+                      {(() => {
+                        const todayIso = storageService.getServerTodayIsoSync();
+                        const doneIds = new Set(
+                          storageService
+                            .getAllLogs()
+                            .filter(l =>
+                              l.athleteId &&
+                              storageService.getLogServerDateIso(l.timestamp) === todayIso &&
+                              (Number(l.weight) > 0 || Number(l.reps) > 0 || l.exerciseId === 'kinetix-class-log' || l.exerciseId === 'kinetix-session-done')
+                            )
+                            .map(l => l.athleteId)
+                        );
+                        return doneIds.size;
+                      })()}
+                    </p>
                 </div>
-                <div onClick={() => onViewChange('library')} className="bg-[#0F0F11] border border-white/5 p-6 rounded-[35px] hover:border-white/20 transition-all cursor-pointer">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Ejercicios</p>
-                    <p className="text-3xl font-black italic tabular-nums">{exercises.length}</p>
+                <div onClick={() => onViewChange('crm')} className="bg-[#0F0F11] border border-amber-500/20 p-6 rounded-[35px] hover:border-amber-500/40 transition-all cursor-pointer">
+                    <p className="text-[8px] font-black text-amber-400/80 uppercase tracking-widest mb-1">Por Vencer (≤3d)</p>
+                    <p className="text-3xl font-black italic tabular-nums text-amber-300">
+                      {(() => {
+                        const todayIso = storageService.getServerTodayIsoSync();
+                        const t0 = new Date(`${todayIso}T12:00:00Z`).getTime();
+                        return storageService
+                          .getAthletes()
+                          .filter(a => {
+                            if (a.role !== 'client' || a.isUnlimited || a.isActive === false || !a.cycleEndDate) return false;
+                            const endIso = String(a.cycleEndDate).slice(0, 10);
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(endIso)) return false;
+                            const diff = Math.round((new Date(`${endIso}T12:00:00Z`).getTime() - t0) / 86400000);
+                            return diff >= 0 && diff <= 3;
+                          }).length;
+                      })()}
+                    </p>
                 </div>
             </div>
 

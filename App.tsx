@@ -64,6 +64,7 @@ const App: React.FC = () => {
       if (prev === nextView) return prev;
       setNavHistory(h => [...h.slice(-15), prev]);
       setForwardHistory([]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return nextView;
     });
   }, []);
@@ -74,6 +75,7 @@ const App: React.FC = () => {
         setView(curr => {
           if (curr !== 'home') {
             setForwardHistory(f => [curr, ...f.slice(0, 14)]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return 'home';
           }
           return curr;
@@ -83,6 +85,7 @@ const App: React.FC = () => {
       const prev = h[h.length - 1];
       setView(curr => {
         setForwardHistory(f => [curr, ...f.slice(0, 14)]);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         return prev;
       });
       return h.slice(0, -1);
@@ -95,6 +98,7 @@ const App: React.FC = () => {
       const next = f[0];
       setView(curr => {
         setNavHistory(h => [...h.slice(-15), curr]);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         return next;
       });
       return f.slice(1);
